@@ -10,8 +10,6 @@ set(CMAKE_BUILD_TYPE Debug)
 
 # Variables for Paths of External Libraries
 set(GLFW_ROOT_DIR external/glfw)
-set(GLAD_ROOT_DIR external/glad)
-set(GLM_ROOT_DIR external/glm)
 set(IMGUI_ROOT_DIR external/imgui)
 
 # Add all Header Files
@@ -24,11 +22,11 @@ file(GLOB_RECURSE HEADER_FILES
 IF (WIN32)
     # Windows libraries:
     find_package(OpenGL REQUIRED)
-    set(LIBS glfw opengl32 glad glm)
+    set(LIBS glfw vulkan)
 
     file(GLOB_RECURSE SOURCE_FILES 
-        ${CMAKE_SOURCE_DIR}/src/*.c
-        ${CMAKE_SOURCE_DIR}/platform/windows.c
+        ${CMAKE_SOURCE_DIR}/src/*.cpp
+        ${CMAKE_SOURCE_DIR}/platform/windows.cpp
 
         # IMGUI
         ${IMGUI_ROOT_DIR}/imgui.cpp
@@ -41,11 +39,11 @@ IF (WIN32)
     )
 ELSE()
     # Linux libraries:
-    set(LIBS glfw X11 glad glm)
+    set(LIBS glfw X11 vulkan)
 
     file(GLOB_RECURSE SOURCE_FILES 
-        ${CMAKE_SOURCE_DIR}/src/*.c
-        ${CMAKE_SOURCE_DIR}/platform/linux.c
+        ${CMAKE_SOURCE_DIR}/src/*.cpp
+        ${CMAKE_SOURCE_DIR}/platform/linux.cpp
 
         # IMGUI
         ${IMGUI_ROOT_DIR}/imgui.cpp
@@ -64,8 +62,6 @@ add_executable(${PROJECT_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 
 # Add the External Libraries / Files Directory
 add_subdirectory(${GLFW_ROOT_DIR})
-add_subdirectory(${GLAD_ROOT_DIR})
-add_subdirectory(${GLM_ROOT_DIR})
 
 # Add the Include Directories for the Libraries / Files
 #Used for adding #include into the cpp files
@@ -74,8 +70,6 @@ add_subdirectory(${GLM_ROOT_DIR})
 
 target_include_directories(${PROJECT_NAME} 
 	PUBLIC ${GLFW_ROOT_DIR}/include
-    PUBLIC ${GLAD_ROOT_DIR}/include/glad
-    PUBLIC ${GLM_ROOT_DIR}/include
     PUBLIC ${IMGUI_ROOT_DIR}
     PUBLIC ${IMGUI_ROOT_DIR}/backends
     PUBLIC include
@@ -94,8 +88,6 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_directories(${PROJECT_NAME} 
 	PRIVATE ${GLFW_ROOT_DIR}/src
-	PRIVATE ${GLAD_ROOT_DIR}/src
-    PRIVATE ${GLM_ROOT_DIR}/src
 )
 
 target_link_libraries(${PROJECT_NAME} ${LIBS})
