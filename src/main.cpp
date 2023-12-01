@@ -27,9 +27,9 @@ const char* device_extensions[] = {
 };
 const i32 device_extension_count = 1;
 #ifdef DEBUG
-const u8 enable_validation_layers = 1;
+const bool enable_validation_layers = true;
 #else
-const u8 enable_validation_layers = 0;
+const bool enable_validation_layers = false;
 #endif
 
 
@@ -560,7 +560,7 @@ Err read_file(const char* file, char* dest, i32 len_buf, i32* flen)
     i32 len = ftell(fptr);
     if (len > len_buf - 1) {
         status = 2;
-        printf("File content exceeds buffer size: %s, buffer: %u", file, len_buf);
+        printf("File content exceeds buffer size: %s, buffer: %u\n", file, len_buf);
         goto close_file;
     }
     fseek(fptr, 0, SEEK_SET);
