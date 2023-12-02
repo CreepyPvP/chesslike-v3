@@ -10,6 +10,7 @@ set(CMAKE_BUILD_TYPE Debug)
 
 # Variables for Paths of External Libraries
 set(GLFW_ROOT_DIR external/glfw)
+set(GLM_ROOT_DIR external/glm)
 set(IMGUI_ROOT_DIR external/imgui)
 
 # Add all Header Files
@@ -21,8 +22,7 @@ file(GLOB_RECURSE HEADER_FILES
 
 IF (WIN32)
     # Windows libraries:
-    find_package(OpenGL REQUIRED)
-    set(LIBS glfw vulkan)
+    set(LIBS glfw vulkan glm)
 
     file(GLOB_RECURSE SOURCE_FILES 
         ${CMAKE_SOURCE_DIR}/src/*.cpp
@@ -39,7 +39,7 @@ IF (WIN32)
     )
 ELSE()
     # Linux libraries:
-    set(LIBS glfw X11 vulkan)
+    set(LIBS glfw X11 vulkan glm)
 
     file(GLOB_RECURSE SOURCE_FILES 
         ${CMAKE_SOURCE_DIR}/src/*.cpp
@@ -62,6 +62,7 @@ add_executable(${PROJECT_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 
 # Add the External Libraries / Files Directory
 add_subdirectory(${GLFW_ROOT_DIR})
+add_subdirectory(${GLM_ROOT_DIR})
 
 # Add the Include Directories for the Libraries / Files
 #Used for adding #include into the cpp files
@@ -72,6 +73,7 @@ target_include_directories(${PROJECT_NAME}
 	PUBLIC ${GLFW_ROOT_DIR}/include
     PUBLIC ${IMGUI_ROOT_DIR}
     PUBLIC ${IMGUI_ROOT_DIR}/backends
+    PUBLIC ${GLM_ROOT_DIR}/include
     PUBLIC include
 )
 
@@ -94,6 +96,7 @@ endif()
 
 target_link_directories(${PROJECT_NAME} 
 	PRIVATE ${GLFW_ROOT_DIR}/src
+    PRIVATE ${GLM_ROOT_DIR}/src
 )
 
 target_link_libraries(${PROJECT_NAME} ${LIBS})

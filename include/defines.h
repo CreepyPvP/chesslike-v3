@@ -11,3 +11,11 @@ typedef int64_t i64;
 
 typedef i8 Err;
 
+#define ASSERT(line, err, err_code) if (line) {     \
+    printf(err);                                    \
+    return err_code;                                \
+}
+
+#define ENSURE(line, err_code) if (line) {          \
+    return err_code;                                \
+}
