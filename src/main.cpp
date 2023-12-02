@@ -135,7 +135,7 @@ void init_window()
 {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     window = glfwCreateWindow(width, height, "Vulkan", NULL, NULL);
     glfwSetFramebufferSizeCallback(window, resize_callback);
 }
@@ -905,13 +905,12 @@ Err create_index_buffer()
 
 void cleanup_swapchain() 
 {
-    // TODO: Uncomment and fix this
-    // for (auto framebuffer : swap_chain_framebuffers) {
-    //     vkDestroyFramebuffer(device, framebuffer, NULL);
-    // }
-    // for (auto image_view : swap_chain_image_views) {
-    //     vkDestroyImageView(device, image_view, NULL);
-    // }
+    for (VkFramebuffer framebuffer : swap_chain_framebuffers) {
+        vkDestroyFramebuffer(device, framebuffer, NULL);
+    }
+    for (VkImageView image_view : swap_chain_image_views) {
+        vkDestroyImageView(device, image_view, NULL);
+    }
     vkDestroySwapchainKHR(device, swap_chain, NULL);
 }
 
