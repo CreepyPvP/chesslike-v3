@@ -1171,10 +1171,12 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
 
 void update_uniform_buffer() 
 {
-    float current_time = glfwGetTime();
+    float time = glfwGetTime();
 
     UniformBufferObject ubo;
-    ubo.model = glm::mat4(1.0);
+    ubo.model = glm::rotate(glm::mat4(1.0), 
+                            time * glm::radians(90.f), 
+                            glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.view = glm::lookAt(glm::vec3(2.0, 2.0, 2.0), 
                            glm::vec3(0.0, 0.0, 0.0), 
                            glm::vec3(0.0, 0.0, 1.0));
