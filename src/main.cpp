@@ -11,6 +11,7 @@
 #include <vector>
 
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -117,6 +118,7 @@ std::vector<VkDeviceMemory> uniform_buffers_memory;
 std::vector<void*> uniform_buffers_mapped;
 VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
+u32 current_frame;
 
 static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
@@ -1155,7 +1157,7 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                             pipeline_layout,
                             0,
                             1,
-                            &descriptor_sets[image_index],
+                            &descriptor_sets[current_frame],
                             0,
                             NULL);
     vkCmdDrawIndexed(buffer, index_count, 1, 0, 0, 0);
@@ -1167,7 +1169,7 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     return 0;
 }
 
-void update_uniform_buffer(u32 current_frame) 
+void update_uniform_buffer() 
 {
     float current_time = glfwGetTime();
 
@@ -1185,7 +1187,7 @@ void update_uniform_buffer(u32 current_frame)
     memcpy(uniform_buffers_mapped[current_frame], &ubo, sizeof(ubo));
 }
 
-void draw_frame(u32 current_frame) 
+void draw_frame() 
 {
     vkWaitForFences(device, 
                     1, 
@@ -1208,7 +1210,7 @@ void draw_frame(u32 current_frame)
     }
     vkResetFences(device, 1, &in_flight_fences[current_frame]);
     vkResetCommandBuffer(command_buffers[current_frame], 0);
-    update_uniform_buffer(current_frame);
+    update_uniform_buffer();
     record_command_buffer(command_buffers[current_frame], image_index);
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1258,14 +1260,14 @@ void draw_frame(u32 current_frame)
 
 void main_loop() 
 {
-    u32 current_frame = 0;
+    current_frame = 0;
     while (!glfwWindowShouldClose(window)) {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
             glfwSetWindowShouldClose(window, true);
         }
 
         glfwPollEvents();
-        draw_frame(current_frame);
+        draw_frame();
         current_frame = (current_frame + 1) % max_frames_in_flight;
     }
     vkDeviceWaitIdle(device);
