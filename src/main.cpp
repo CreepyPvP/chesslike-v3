@@ -1280,7 +1280,6 @@ void cleanup()
         vkDestroyBuffer(device, uniform_buffers[i], NULL);
         vkFreeMemory(device, uniform_buffers_memory[i], NULL);
     }
-    vkDestroyDescriptorSetLayout(device, descriptor_set_layout, NULL);
     vkDestroyDescriptorPool(device, descriptor_pool, NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layout, NULL);
     vkDestroyBuffer(device, vertex_buffer, NULL);
