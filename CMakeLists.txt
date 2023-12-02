@@ -75,6 +75,12 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC include
 )
 
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PUBLIC /W4 /WX)
+else()
+    target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Wextra -Wpedantic)
+endif()
+
 #		Include Files from Outside the Workspace Folder -> Like Vulkan SDK
 
 #target_include_directories(${PROJECT_NAME}
@@ -91,3 +97,4 @@ target_link_directories(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME} ${LIBS})
+

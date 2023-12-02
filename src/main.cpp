@@ -61,12 +61,12 @@ struct Vertex
 const Vertex vertices[] = {
     {-0.5f, -0.5f, 1.0f, 0.0f, 0.0f},
     {0.5f, -0.5f, 0.0f, 1.0f, 0.0f},
-    {0.5f, 0.5f, 0.0f, 0.0f, 1.0f},
-    {-0.5f, 0.5f, 1.0f, 1.0f, 1.0f}
+    {0.5f, 0.5f, 0.0f, 1.0f, 1.0f},
+    {-0.5f, 0.5f, 1.0f, 0.0f, 1.0f}
 };
 const u32 vertex_count = 4;
 
-const u32 indices[] = {0, 1, 2, 2, 3, 0};
+const u16 indices[] = {0, 1, 2, 2, 3, 0};
 const u32 index_count = 6;
 
 GLFWwindow *window;
@@ -99,7 +99,7 @@ VkDeviceMemory vertex_buffer_memory;
 VkBuffer index_buffer;
 VkDeviceMemory index_buffer_memory;
 
-static void resize_callback(GLFWwindow *window, int width, int height) 
+static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
     frame_buffer_resized = true;
 }
@@ -261,7 +261,6 @@ SwapChainSupportDetails query_swap_chain_support(VkPhysicalDevice device)
                                               surface,
                                               &present_mode_count, 
                                               NULL);
-    VkPresentModeKHR* present_modes;
     if (format_count > 0) {
         details.present_modes = (VkPresentModeKHR*) 
             malloc(sizeof(VkPresentModeKHR) * present_mode_count);
@@ -283,7 +282,7 @@ QueueFamilyIndices find_queue_families(VkPhysicalDevice device)
     vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families);
     QueueFamilyIndices queue_indices;
     queue_indices.flags = 0;
-    for (i32 i = 0; i < count; ++i) {
+    for (u32 i = 0; i < count; ++i) {
         VkQueueFamilyProperties queue_family = families[i];
         VkBool32 present_support = 0;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, 
@@ -878,7 +877,7 @@ Err create_vertex_buffer()
 
 Err create_index_buffer() 
 {
-    VkDeviceSize buffer_size = index_count * sizeof(indices[0]);
+    VkDeviceSize buffer_size = index_count * sizeof(u16);
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     if (create_buffer(buffer_size, 
@@ -890,7 +889,7 @@ Err create_index_buffer()
         return 1;
     void *data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, indices, (size_t) buffer_size);
+    memcpy(data, indices, buffer_size);
     vkUnmapMemory(device, staging_buffer_memory);
     if (create_buffer(buffer_size,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
