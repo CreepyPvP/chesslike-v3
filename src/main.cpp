@@ -16,6 +16,9 @@
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include "defines.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
@@ -116,6 +119,8 @@ u32 current_frame;
 VkImage depth_image;
 VkDeviceMemory depth_image_memory;
 VkImageView depth_image_view;
+VkImage texture_image;
+VkDeviceMemory texture_image_memory;
 
 static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
@@ -1131,12 +1136,12 @@ VkFormat find_supported_format(VkFormat* candidates,
                                VkImageTiling tiling,
                                VkFormatFeatureFlags features)
 {
-    for (u32 i = 0; i < canddidate_count; ++i) {
+    for (u32 i = 0; i < candidate_count; ++i) {
         VkFormat format = candidates[i];
         VkFormatProperties props;
         vkGetPhysicalDeviceFormatProperties(physical_device, format, &props);
         if (tiling == VK_IMAGE_TILING_LINEAR && 
-            (props.liniarTilingFeatures & features) == features) {
+            (props.linearTilingFeatures & features) == features) {
             return format;
         } else if (tiling == VK_IMAGE_TILING_OPTIMAL && 
             (props.optimalTilingFeatures & features) == features) {
@@ -1179,6 +1184,95 @@ void create_depth_resources()
     // depth_image_view = create_image_view(depth_image, depth_format);
 }
 
+Err create_image(u32 width, 
+                  u32 height, 
+                  VkFormat format, 
+                  VkImageTiling tiling,
+                  VkImageUsageFlags usage,
+                  VkMemoryPropertyFlags properties,
+                  VkImage* image,
+                  VkDeviceMemory* image_memory) 
+{
+    VkImageCreateInfo image_info{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.extent.width = width;
+    image_info.extent.height = height;
+    image_info.extent.depth = 1;
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.format = format;
+    image_info.tiling = tiling;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_info.usage = usage;
+    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_info.flags = 0;
+    if (vkCreateImage(device, 
+                      &image_info, 
+                      NULL, 
+                      image) != VK_SUCCESS) {
+        printf("Failed to create image\n");
+        return 2;
+    }
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(device, *image, &mem_requirements);
+    VkMemoryAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = find_memory_type(
+        mem_requirements.memoryTypeBits,
+        properties);
+    if (vkAllocateMemory(device, 
+                         &alloc_info, 
+                         NULL, 
+                         image_memory) != VK_SUCCESS) {
+        printf("Failed to allocate image memory\n");
+        return 3;
+    }
+    vkBindImageMemory(device, *image, *image_memory, 0);
+    return 0;
+}
+
+Err create_texture_image()
+{
+    i32 tex_width;
+    i32 tex_height;
+    i32 tex_channels;
+    const char* tex_path = "../textures/texture.jpg";
+    stbi_uc* pixels = stbi_load(tex_path, 
+                                &tex_width, 
+                                &tex_height, 
+                                &tex_channels, 
+                                STBI_rbg_alpha);
+    VkDeviceSize image_size = tex_width * tex_height * 4;
+    if (!pixels) {
+        printf("Failed to load texture image: %s\n", tex_path);
+        return 1;
+    }
+    VkBuffer staging_buffer;
+    VkDeviceMemory stating_buffer_memory;
+    create_buffer(image_size, 
+                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
+                  staging_buffer, 
+                  staging_buffer_memory);
+    void* data;
+    vkMapMemory(device, staging_buffer_memory, 0, image_size, 0, &data);
+    memcpy(data, pixels, image_size);
+    vkUnmapMemory(device, staging_buffer_memory);
+    stbi_image_free(pixels);
+    create_image(tex_width, 
+                 tex_height, 
+                 VK_FORMAT_R8G8B8A8_SRGB, 
+                 VK_IMAGE_TILING_OPTIMAL, 
+                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+                 &texture_image, 
+                 &texture_image_memory);
+}
+
 Err init_vulkan() 
 {
     ENSURE(create_instance(), 1);
@@ -1192,7 +1286,8 @@ Err init_vulkan()
     ENSURE(create_graphics_pipeline(), 8);
     ENSURE(create_framebuffers(), 9);
     ENSURE(create_command_pool(), 10);
-    ENSURE(create_depth_resources(), 19);
+    create_depth_resources();
+    ENSURE(create_texture_image());
     ENSURE(create_vertex_buffer(), 11);
     ENSURE(create_index_buffer(), 12);
     ENSURE(create_uniform_buffer(), 16);
