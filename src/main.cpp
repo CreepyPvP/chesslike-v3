@@ -121,6 +121,8 @@ VkDeviceMemory depth_image_memory;
 VkImageView depth_image_view;
 VkImage texture_image;
 VkDeviceMemory texture_image_memory;
+VkImageView texture_image_view;
+VkSampler texture_sampler;
 
 static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
@@ -391,6 +393,7 @@ Err create_logical_device()
         queue_create_infos[i] = queue_create_info;
     }
     VkPhysicalDeviceFeatures device_features{};
+    device_features.samplerAnisotropy = VK_TRUE;
     VkDeviceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.queueCreateInfoCount = queue_fam_count;
@@ -527,31 +530,35 @@ Err create_swap_chain()
     return 0;
 }
 
+VkImageView create_image_view(VkImage image, VkFormat format) 
+{
+    VkImageViewCreateInfo view_info{};
+    view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_info.image = image;
+    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view_info.format = format;
+    view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_info.subresourceRange.baseMipLevel = 0;
+    view_info.subresourceRange.levelCount = 1;
+    view_info.subresourceRange.baseArrayLayer = 0;
+    view_info.subresourceRange.layerCount = 1;
+    VkImageView image_view;
+    if (vkCreateImageView(device, 
+                          &view_info, 
+                          NULL, 
+                          &image_view) != VK_SUCCESS) {
+        // TODO: do something about this one
+        printf("Failed to create texture image view\n");
+    }
+    return image_view;
+}
+
 Err create_image_views() 
 {
     swap_chain_image_views.resize(swap_chain_images.size());
     for (u32 i = 0; i < swap_chain_images.size(); ++i) {
-        VkImageViewCreateInfo create_info{};
-        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        create_info.image = swap_chain_images[i];
-        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        create_info.subresourceRange.baseMipLevel = 0;
-        create_info.subresourceRange.levelCount = 1;
-        create_info.subresourceRange.baseArrayLayer = 0;
-        create_info.subresourceRange.layerCount = 1;
-        create_info.format = swap_chain_image_format;
-        if (vkCreateImageView(device, 
-                              &create_info, 
-                              NULL,
-                              &swap_chain_image_views[i]) != VK_SUCCESS) {
-            printf("Failed to create image views!\n");
-            return 1;
-        }
+        swap_chain_image_views[i] = create_image_view(swap_chain_images[i], 
+                                                      swap_chain_image_format);
     }
     return 0;
 }
@@ -1375,6 +1382,42 @@ Err create_texture_image()
     return 0;
 }
 
+void create_texture_image_view()
+{
+    texture_image_view = create_image_view(texture_image, 
+                                           VK_FORMAT_R8G8B8A8_SRGB);
+}
+
+void create_texture_sampler()
+{
+    VkSamplerCreateInfo sampler_info{};
+    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_info.magFilter = VK_FILTER_LINEAR;
+    sampler_info.minFilter = VK_FILTER_LINEAR;
+    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.anisotropyEnable = VK_TRUE;
+    VkPhysicalDeviceProperties properties{};
+    vkGetPhysicalDeviceProperties(physical_device, &properties);
+    sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_info.unnormalizedCoordinates = VK_FALSE;
+    sampler_info.compareEnable = VK_FALSE;
+    sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
+    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_info.mipLodBias = 0.0f;
+    sampler_info.minLod = 0.0f;
+    sampler_info.maxLod = 0.0f;
+    if (vkCreateSampler(device, 
+                        &sampler_info, 
+                        NULL, 
+                        &texture_sampler) != VK_SUCCESS) {
+        // TODO: handle this one
+        printf("Failed to create texture sampler\n");
+    }
+}
+
 Err init_vulkan() 
 {
     ENSURE(create_instance(), 1);
@@ -1390,6 +1433,8 @@ Err init_vulkan()
     ENSURE(create_command_pool(), 10);
     create_depth_resources();
     ENSURE(create_texture_image(), 20);
+    create_texture_image_view();
+    create_texture_sampler();
     ENSURE(create_vertex_buffer(), 11);
     ENSURE(create_index_buffer(), 12);
     ENSURE(create_uniform_buffer(), 16);
@@ -1557,6 +1602,8 @@ void main_loop()
 void cleanup() 
 {
     cleanup_swapchain();
+    vkDestroySampler(device, texture_sampler, NULL);
+    vkDestroyImageView(device, texture_image_view, NULL);
     vkDestroyImage(device, texture_image, NULL);
     vkFreeMemory(device, texture_image_memory, NULL);
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
