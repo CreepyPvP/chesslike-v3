@@ -819,7 +819,7 @@ Err create_command_pool()
     return 0;
 }
 
-void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) 
+VkCommandBuffer begin_single_time_commands()
 {
     VkCommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -832,19 +832,30 @@ void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(command_buffer, &begin_info);
+    return command_buffer;
+}
+
+void end_single_time_commands(VkCommandBuffer buffer) 
+{
+    vkEndCommandBuffer(buffer);
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &buffer;
+    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphics_queue);
+    vkFreeCommandBuffers(device, command_pool, 1, &buffer);
+}
+
+void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) 
+{
+    VkCommandBuffer cmd_buffer = begin_single_time_commands();
     VkBufferCopy copy_region{};
     copy_region.srcOffset = 0;
     copy_region.dstOffset = 0;
     copy_region.size = size;
-    vkCmdCopyBuffer(command_buffer, src_buffer, dst_buffer, 1, &copy_region);
-    vkEndCommandBuffer(command_buffer);
-    VkSubmitInfo submit_info{};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
-    vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphics_queue);
-    vkFreeCommandBuffers(device, command_pool, 1, &command_buffer);
+    vkCmdCopyBuffer(cmd_buffer, src_buffer, dst_buffer, 1, &copy_region);
+    end_single_time_commands(cmd_buffer);
 }
 
 u32 find_memory_type(u32 type_filter, VkMemoryPropertyFlags properties) 
@@ -1149,6 +1160,7 @@ VkFormat find_supported_format(VkFormat* candidates,
         }
     }
     printf("Failed to find supported format\n");
+    return VK_FORMAT_D32_SFLOAT;
 }
 
 VkFormat find_depth_format() 
@@ -1182,6 +1194,81 @@ void create_depth_resources()
     //              depth_image,
     //              depth_image_memory);
     // depth_image_view = create_image_view(depth_image, depth_format);
+}
+
+void transition_image_layout(VkImage image, 
+                             VkFormat format, 
+                             VkImageLayout old_layout, 
+                             VkImageLayout new_layout)
+{
+    VkCommandBuffer cmd_buffer = begin_single_time_commands();
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    VkPipelineStageFlags source_stage;
+    VkPipelineStageFlags destination_stage;
+    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && 
+            new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && 
+            new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        printf("Unsupported layout transition\n");
+        return;
+    }
+    vkCmdPipelineBarrier(cmd_buffer,
+                         source_stage,
+                         destination_stage,
+                         0,
+                         0, NULL,
+                         0, NULL,
+                         1, &barrier);
+    end_single_time_commands(cmd_buffer);
+}
+
+void copy_buffer_to_image(VkBuffer buffer, 
+                          VkImage image, 
+                          u32 width, 
+                          u32 height) 
+{
+    VkCommandBuffer cmd_buffer = begin_single_time_commands();
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {
+        width,
+        height,
+        1
+    };
+    vkCmdCopyBufferToImage(cmd_buffer,
+                           buffer,
+                           image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           1,
+                           &region);
+    end_single_time_commands(cmd_buffer);
 }
 
 Err create_image(u32 width, 
@@ -1244,21 +1331,21 @@ Err create_texture_image()
                                 &tex_width, 
                                 &tex_height, 
                                 &tex_channels, 
-                                STBI_rbg_alpha);
+                                STBI_rgb_alpha);
     VkDeviceSize image_size = tex_width * tex_height * 4;
     if (!pixels) {
         printf("Failed to load texture image: %s\n", tex_path);
         return 1;
     }
     VkBuffer staging_buffer;
-    VkDeviceMemory stating_buffer_memory;
+    VkDeviceMemory staging_buffer_memory;
     create_buffer(image_size, 
                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
                   staging_buffer, 
                   staging_buffer_memory);
-    void* data;
+    void* data = NULL;
     vkMapMemory(device, staging_buffer_memory, 0, image_size, 0, &data);
     memcpy(data, pixels, image_size);
     vkUnmapMemory(device, staging_buffer_memory);
@@ -1271,6 +1358,21 @@ Err create_texture_image()
                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
                  &texture_image, 
                  &texture_image_memory);
+    transition_image_layout(texture_image, 
+                            VK_FORMAT_R8G8B8A8_SRGB, 
+                            VK_IMAGE_LAYOUT_UNDEFINED, 
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copy_buffer_to_image(staging_buffer, 
+                         texture_image, 
+                         tex_width, 
+                         tex_height);
+    transition_image_layout(texture_image, 
+                            VK_FORMAT_R8G8B8A8_SRGB, 
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vkDestroyBuffer(device, staging_buffer, NULL);
+    vkFreeMemory(device, staging_buffer_memory, NULL);
+    return 0;
 }
 
 Err init_vulkan() 
@@ -1287,7 +1389,7 @@ Err init_vulkan()
     ENSURE(create_framebuffers(), 9);
     ENSURE(create_command_pool(), 10);
     create_depth_resources();
-    ENSURE(create_texture_image());
+    ENSURE(create_texture_image(), 20);
     ENSURE(create_vertex_buffer(), 11);
     ENSURE(create_index_buffer(), 12);
     ENSURE(create_uniform_buffer(), 16);
@@ -1455,6 +1557,8 @@ void main_loop()
 void cleanup() 
 {
     cleanup_swapchain();
+    vkDestroyImage(device, texture_image, NULL);
+    vkFreeMemory(device, texture_image_memory, NULL);
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
         vkDestroyBuffer(device, uniform_buffers[i], NULL);
         vkFreeMemory(device, uniform_buffers_memory[i], NULL);
