@@ -12,6 +12,7 @@
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -112,6 +113,9 @@ std::vector<void*> uniform_buffers_mapped;
 VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
 u32 current_frame;
+VkImage depth_image;
+VkDeviceMemory depth_image_memory;
+VkImageView depth_image_view;
 
 static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
@@ -1122,6 +1126,59 @@ Err load_assets()
     return 0;
 }
 
+VkFormat find_supported_format(VkFormat* candidates, 
+                               u32 candidate_count, 
+                               VkImageTiling tiling,
+                               VkFormatFeatureFlags features)
+{
+    for (u32 i = 0; i < canddidate_count; ++i) {
+        VkFormat format = candidates[i];
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &props);
+        if (tiling == VK_IMAGE_TILING_LINEAR && 
+            (props.liniarTilingFeatures & features) == features) {
+            return format;
+        } else if (tiling == VK_IMAGE_TILING_OPTIMAL && 
+            (props.optimalTilingFeatures & features) == features) {
+            return format;
+        }
+    }
+    printf("Failed to find supported format\n");
+}
+
+VkFormat find_depth_format() 
+{
+    VkFormat formats[] = {
+        VK_FORMAT_D32_SFLOAT,
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_D24_UNORM_S8_UINT
+    };
+    return find_supported_format(formats, 
+                            3, 
+                            VK_IMAGE_TILING_OPTIMAL, 
+                            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+}
+
+bool has_stencil_component(VkFormat format)
+{
+    return format == VK_FORMAT_D32_SFLOAT_S8_UINT || 
+            format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+
+void create_depth_resources()
+{
+    // VkFormat depth_format = find_depth_format();
+    // create_image(swap_chain_extent.width, 
+    //              swap_chain_extent.height,
+    //              depth_format,
+    //              VK_IMAGE_TILING_OPTIMAL,
+    //              VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+    //              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    //              depth_image,
+    //              depth_image_memory);
+    // depth_image_view = create_image_view(depth_image, depth_format);
+}
+
 Err init_vulkan() 
 {
     ENSURE(create_instance(), 1);
@@ -1135,6 +1192,7 @@ Err init_vulkan()
     ENSURE(create_graphics_pipeline(), 8);
     ENSURE(create_framebuffers(), 9);
     ENSURE(create_command_pool(), 10);
+    ENSURE(create_depth_resources(), 19);
     ENSURE(create_vertex_buffer(), 11);
     ENSURE(create_index_buffer(), 12);
     ENSURE(create_uniform_buffer(), 16);
