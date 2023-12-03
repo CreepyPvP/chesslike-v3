@@ -2,10 +2,7 @@ import bpy
 import bmesh
 from array import array
 
-for obj in bpy.data.objects:
-    if obj.name not in bpy.data.meshes:
-        continue
-    mesh = bpy.data.meshes[obj.name]
+for mesh in bpy.data.meshes:
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bmesh.ops.triangulate(bm, faces=bm.faces[:])
@@ -25,7 +22,7 @@ for obj in bpy.data.objects:
         indices.append(face.verts[0].index)
         indices.append(face.verts[1].index)
         indices.append(face.verts[2].index)
-    output_file = open("models/" + obj.name + ".mod", 'wb')
+    output_file = open("models/" + mesh.name + ".mod", 'wb')
     array('I', meta_data).tofile(output_file)
     array('f', vertices).tofile(output_file)
     array('I', indices).tofile(output_file)

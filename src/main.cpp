@@ -19,7 +19,6 @@
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
-#define FILE_BUFFER 10000
 
 const u32 width = 1280;
 const u32 height = 720;
@@ -562,28 +561,21 @@ Err create_shader_module(const char* code, u32 len, VkShaderModule* module)
     return 0;
 }
 
-Err read_file(const char* file, char* dest, i32 len_buf, i32* flen)
+char* read_file(const char* file, i32* flen)
 {
-    int status = 0;
     FILE* fptr = fopen(file, "rb");
     if (fptr == NULL) {
         printf("Failed to read file: %s\n", file);
-        return 1;
+        return NULL;
     }
     fseek(fptr, 0, SEEK_END);
     i32 len = ftell(fptr);
-    if (len > len_buf - 1) {
-        status = 2;
-        printf("File content exceeds buffer size: %s, buffer: %u\n", file, len_buf);
-        goto close_file;
-    }
+    char* buf = (char*) malloc(len);
     fseek(fptr, 0, SEEK_SET);
-    fread(dest, len, 1, fptr);
-    dest[len] = '\0';
+    fread(buf, len, 1, fptr);
     *flen = len;
-close_file:
     fclose(fptr);
-    return status;
+    return buf;
 }
 
 Err create_descriptor_set_layout() 
@@ -610,18 +602,21 @@ Err create_descriptor_set_layout()
 
 Err create_graphics_pipeline() 
 {
-    char buffer[FILE_BUFFER];
     VkShaderModule vert_shader;
     VkShaderModule frag_shader;
     i32 len;
-    if (read_file("../vert.spv", buffer, FILE_BUFFER, &len))
+    char* buffer = read_file("../vert.spv", &len);
+    if (!buffer)
         return 10;
     if (create_shader_module(buffer, len, &vert_shader))
         return 5;
-    if (read_file("../frag.spv", buffer, FILE_BUFFER, &len))
+    free(buffer);
+    buffer = read_file("../frag.spv", &len);
+    if (!buffer)
         return 10;
     if (create_shader_module(buffer, len, &frag_shader))
         return 6;
+    free(buffer);
     VkPipelineShaderStageCreateInfo vert_create_info{};
     vert_create_info.sType =
         VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1094,11 +1089,10 @@ Err create_sync_objects()
 
 Err load_assets() 
 {
-    char buffer[10000];
     i32 file_len;
-    if(read_file("../models/Cube.mod", buffer, 10000, &file_len)) {
+    char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
+    if (!buffer)
         return 1;
-    }
 
     u32* int_ptr = (u32*) buffer;
     vertex_count = *int_ptr;
@@ -1124,6 +1118,7 @@ Err load_assets()
     for (u32 i = 0; i < index_count; ++i) {
         indices[i] = *(int_ptr++);
     }
+    free(buffer);
     return 0;
 }
 
@@ -1204,8 +1199,8 @@ void update_uniform_buffer()
 
     UniformBufferObject ubo;
     ubo.model = glm::rotate(glm::mat4(1.0), 
-                            time * glm::radians(90.f), 
-                            glm::vec3(0.0f, 0.0f, 1.0f));
+                            glm::radians(90.f), 
+                            glm::vec3(1.0f, 0.0f, 0.0f));
     ubo.view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
                            glm::vec3(0.0, 0.0, 0.0), 
                            glm::vec3(0.0, 0.0, 1.0));
