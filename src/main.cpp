@@ -72,16 +72,10 @@ struct UniformBufferObject
     glm::mat4 proj;
 };
 
-const Vertex vertices[] = {
-    {-0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f},
-    {0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f},
-    {0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f},
-    {-0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f}
-};
-const u32 vertex_count = 4;
-
-const u16 indices[] = {0, 1, 2, 2, 3, 0};
-const u32 index_count = 6;
+Vertex* vertices;
+u32 vertex_count;
+u32* indices;
+u32 index_count;
 
 GLFWwindow *window;
 QueueFamilyIndices queue_indices;
@@ -922,7 +916,7 @@ Err create_vertex_buffer()
 
 Err create_index_buffer() 
 {
-    VkDeviceSize buffer_size = index_count * sizeof(u16);
+    VkDeviceSize buffer_size = index_count * sizeof(u32);
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     if (create_buffer(buffer_size, 
@@ -1098,6 +1092,41 @@ Err create_sync_objects()
     return 0;
 }
 
+Err load_assets() 
+{
+    char buffer[10000];
+    i32 file_len;
+    if(read_file("../models/Cube.mod", buffer, 10000, &file_len)) {
+        return 1;
+    }
+
+    u32* int_ptr = (u32*) buffer;
+    vertex_count = *int_ptr;
+    ++int_ptr;
+    index_count = *int_ptr;
+    ++int_ptr;
+    
+    vertices = (Vertex*) malloc(sizeof(Vertex) * vertex_count);
+    indices = (u32*) malloc(sizeof(u32) * index_count);
+
+    float* float_ptr = (float*) int_ptr;
+    for (u32 i = 0; i < vertex_count; ++i) {
+        Vertex vertex;
+        vertex.x = *(float_ptr++);
+        vertex.y = *(float_ptr++);
+        vertex.z = *(float_ptr++);
+        vertex.r = *(float_ptr++);
+        vertex.g = *(float_ptr++);
+        vertex.b = *(float_ptr++);
+        vertices[i] = vertex;
+    }
+    int_ptr = (u32*) float_ptr;
+    for (u32 i = 0; i < index_count; ++i) {
+        indices[i] = *(int_ptr++);
+    }
+    return 0;
+}
+
 Err init_vulkan() 
 {
     ENSURE(create_instance(), 1);
@@ -1151,7 +1180,7 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     VkBuffer vertex_buffers[] = {vertex_buffer};
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
-    vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
     vkCmdBindDescriptorSets(buffer, 
                             VK_PIPELINE_BIND_POINT_GRAPHICS, 
                             pipeline_layout,
@@ -1177,7 +1206,7 @@ void update_uniform_buffer()
     ubo.model = glm::rotate(glm::mat4(1.0), 
                             time * glm::radians(90.f), 
                             glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0, 2.0, 2.0), 
+    ubo.view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
                            glm::vec3(0.0, 0.0, 0.0), 
                            glm::vec3(0.0, 0.0, 1.0));
     ubo.proj = glm::perspective(glm::radians(45.0f), 
@@ -1307,6 +1336,7 @@ void cleanup()
 i32 main() 
 {
     init_window();
+    load_assets();
     init_vulkan();
     main_loop();
     cleanup();

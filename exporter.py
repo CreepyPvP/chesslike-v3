@@ -9,7 +9,7 @@ for obj in bpy.data.objects:
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bmesh.ops.triangulate(bm, faces=bm.faces[:])
-    meta_data = [len(mesh.vertices), len(bm.faces)];
+    meta_data = [len(mesh.vertices), len(bm.faces) * 3];
     vertices = []
     indices = []
     for vert in mesh.vertices:
@@ -25,7 +25,7 @@ for obj in bpy.data.objects:
         indices.append(face.verts[0].index)
         indices.append(face.verts[1].index)
         indices.append(face.verts[2].index)
-    output_file = open(obj.name, 'wb')
+    output_file = open("models/" + obj.name + ".mod", 'wb')
     array('I', meta_data).tofile(output_file)
     array('f', vertices).tofile(output_file)
     array('I', indices).tofile(output_file)
