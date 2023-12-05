@@ -4,8 +4,7 @@
 layout(binding = 0) uniform UniformBufferObject 
 {
     mat4 model;
-    mat4 view;
-    mat4 proj;
+    mat4 proj_view;
 } ubo;
 
 layout(location = 0) in vec3 in_position;
@@ -19,5 +18,5 @@ void main()
     vec4 world_pos = ubo.model * vec4(in_position, 1.0);
     out_normal = (ubo.model * vec4(in_normal, 0.0)).xyz;
     out_pos = world_pos.xyz;
-    gl_Position = ubo.proj * ubo.view * world_pos;
+    gl_Position = ubo.proj_view * world_pos;
 }

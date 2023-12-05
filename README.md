@@ -9,4 +9,6 @@
 - Skeletal animation
 - Basic water rendering
 - Object loading
-- Postprocessing: Tonemapping and Dithering?
+- SSAO
+- Postprocessing: Tonemapping and Dithering? Depth of Field? Motion blur? Bloom?
+- Antialiasing

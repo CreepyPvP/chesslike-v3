@@ -71,8 +71,7 @@ struct Vertex
 struct UniformBufferObject
 {
     glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
+    glm::mat4 proj_view;
 };
 
 Vertex* vertices;
@@ -1568,14 +1567,15 @@ void update_uniform_buffer()
     ubo.model = glm::rotate(ubo.model, 
                             time * glm::radians(90.f), 
                             glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
+    glm::mat4 view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
                            glm::vec3(0.0, 0.0, 2.0), 
                            glm::vec3(0.0, 0.0, 1.0));
-    ubo.proj = glm::perspective(glm::radians(45.0f), 
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
             (float) swap_chain_extent.width / (float) swap_chain_extent.height, 
             0.1f, 
             10.0f);
-    ubo.proj[1][1] *= -1;
+    proj[1][1] *= -1;
+    ubo.proj_view = proj * view;
 
     memcpy(uniform_buffers_mapped[current_frame], &ubo, sizeof(ubo));
 }
