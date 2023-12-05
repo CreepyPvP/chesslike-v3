@@ -1,6 +1,11 @@
 build
 .cache
 
+# Those files are too big. should use lfs at some point...
+models/Dragon.fbx
+models/PM3D_Cube3D2
+blender
+
 # C++ GitIgnore
 
 # Prerequisites

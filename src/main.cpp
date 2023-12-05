@@ -694,7 +694,7 @@ Err create_graphics_pipeline()
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = 0;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -1191,7 +1191,8 @@ Err create_sync_objects()
 Err load_assets() 
 {
     i32 file_len;
-    char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
+    // char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
+    char* buffer = read_file("../blender/Mesh.003.mod", &file_len);
     if (!buffer)
         return 1;
 
@@ -1567,13 +1568,13 @@ void update_uniform_buffer()
     ubo.model = glm::rotate(ubo.model, 
                             time * glm::radians(90.f), 
                             glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
-                           glm::vec3(0.0, 0.0, 2.0), 
+    glm::mat4 view = glm::lookAt(glm::vec3(200.0, 200.0, 200.0), 
+                           glm::vec3(0.0, 0.0, 70.0), 
                            glm::vec3(0.0, 0.0, 1.0));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
             (float) swap_chain_extent.width / (float) swap_chain_extent.height, 
             0.1f, 
-            10.0f);
+            1000.0f);
     proj[1][1] *= -1;
     ubo.proj_view = proj * view;
 

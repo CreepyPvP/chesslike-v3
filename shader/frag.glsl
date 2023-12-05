@@ -18,7 +18,7 @@ vec3 light_dir[] = {
 
 void main() 
 {
-    vec3 camera_pos = vec3(4, 4, 4);
+    vec3 camera_pos = vec3(200, 200, 200);
     vec3 n = normalize(in_normal);
     vec3 v = normalize(camera_pos - in_pos);
 
