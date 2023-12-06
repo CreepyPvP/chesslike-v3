@@ -22,7 +22,9 @@ file(GLOB_RECURSE HEADER_FILES
 
 IF (WIN32)
     # Windows libraries:
-    set(LIBS glfw vulkan glm)
+    set(LIBS glfw vulkan-1 glm)
+    set(Vulkan_INCLUDE_DIRS C:/VulkanSDK/1.3.268.0/Include)
+    set(Vulkan_LIB_DIRS C:/VulkanSDK/1.3.268.0/Lib)
 
     file(GLOB_RECURSE SOURCE_FILES 
         ${CMAKE_SOURCE_DIR}/src/*.cpp
@@ -59,15 +61,9 @@ ENDIF()
 add_executable(${PROJECT_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 
 
-
 # Add the External Libraries / Files Directory
 add_subdirectory(${GLFW_ROOT_DIR})
 add_subdirectory(${GLM_ROOT_DIR})
-
-# Add the Include Directories for the Libraries / Files
-#Used for adding #include into the cpp files
-
-#		Include Files From Within the Workspace Folder
 
 target_include_directories(${PROJECT_NAME} 
 	PUBLIC ${GLFW_ROOT_DIR}/include
@@ -78,16 +74,16 @@ target_include_directories(${PROJECT_NAME}
 )
 
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PUBLIC /W4 /WX)
+    # target_compile_options(${PROJECT_NAME} PUBLIC /W4 /WX)
 else()
     target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Wextra -Wpedantic)
 endif()
 
 #		Include Files from Outside the Workspace Folder -> Like Vulkan SDK
-
-#target_include_directories(${PROJECT_NAME}
-#	PRIVATE ${Vulkan_INCLUDE_DIRS}
-#)
+#
+target_include_directories(${PROJECT_NAME}
+    PRIVATE ${Vulkan_INCLUDE_DIRS}
+)
 
 # Add the Link Directories for the Libraries / Files
 #Used for creation of Static/Dynamic Libraries
@@ -97,6 +93,7 @@ endif()
 target_link_directories(${PROJECT_NAME} 
 	PRIVATE ${GLFW_ROOT_DIR}/src
     PRIVATE ${GLM_ROOT_DIR}/src
+    PRIVATE ${Vulkan_LIB_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME} ${LIBS})
