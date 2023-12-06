@@ -74,21 +74,14 @@ target_include_directories(${PROJECT_NAME}
 )
 
 if(MSVC)
-    # target_compile_options(${PROJECT_NAME} PUBLIC /W4 /WX)
+    target_compile_options(${PROJECT_NAME} PUBLIC /W4)
 else()
     target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Wextra -Wpedantic)
 endif()
 
-#		Include Files from Outside the Workspace Folder -> Like Vulkan SDK
-#
 target_include_directories(${PROJECT_NAME}
     PRIVATE ${Vulkan_INCLUDE_DIRS}
 )
-
-# Add the Link Directories for the Libraries / Files
-#Used for creation of Static/Dynamic Libraries
-
-#		Include Files From Within the Workspace Folder
 
 target_link_directories(${PROJECT_NAME} 
 	PRIVATE ${GLFW_ROOT_DIR}/src
