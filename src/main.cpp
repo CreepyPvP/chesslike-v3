@@ -35,6 +35,7 @@ const char* device_extensions[] = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 const i32 device_extension_count = 1;
+
 #ifdef DEBUG
 const bool enable_validation_layers = true;
 #else
@@ -581,9 +582,12 @@ Err create_shader_module(const char* code, u32 len, VkShaderModule* module)
 
 char* read_file(const char* file, i32* flen)
 {
-    FILE* fptr = fopen(file, "rb");
+    char path_buffer[1024];
+    strcpy(path_buffer, PATH_PREFIX);
+    strcat(path_buffer, file);
+    FILE* fptr = fopen(path_buffer, "rb");
     if (fptr == NULL) {
-        printf("Failed to read file: %s\n", file);
+        printf("Failed to read file: %s\n", path_buffer);
         return NULL;
     }
     fseek(fptr, 0, SEEK_END);
@@ -623,13 +627,13 @@ Err create_graphics_pipeline()
     VkShaderModule vert_shader;
     VkShaderModule frag_shader;
     i32 len;
-    char* buffer = read_file("../vert.spv", &len);
+    char* buffer = read_file("vert.spv", &len);
     if (!buffer)
         return 10;
     if (create_shader_module(buffer, len, &vert_shader))
         return 5;
     free(buffer);
-    buffer = read_file("../frag.spv", &len);
+    buffer = read_file("frag.spv", &len);
     if (!buffer)
         return 10;
     if (create_shader_module(buffer, len, &frag_shader))
@@ -1192,7 +1196,7 @@ Err load_assets()
 {
     i32 file_len;
     // char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
-    char* buffer = read_file("../blender/Mesh.003.mod", &file_len);
+    char* buffer = read_file("assets/Cube.mod", &file_len);
     if (!buffer)
         return 1;
 
@@ -1255,8 +1259,8 @@ void transition_image_layout(VkImage image,
     } else {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     }
-    VkPipelineStageFlags source_stage;
-    VkPipelineStageFlags destination_stage;
+    VkPipelineStageFlags source_stage{};
+    VkPipelineStageFlags destination_stage{};
     if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && 
             new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         barrier.srcAccessMask = 0;
@@ -1274,7 +1278,7 @@ void transition_image_layout(VkImage image,
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    }else {
+    } else {
         printf("Unsupported layout transition\n");
         return;
     }
@@ -1393,15 +1397,18 @@ Err create_texture_image()
     i32 tex_width;
     i32 tex_height;
     i32 tex_channels;
-    const char* tex_path = "../textures/texture.jpg";
-    stbi_uc* pixels = stbi_load(tex_path, 
+    char path_buffer[1024];
+    const char* file = "assets/texture.jpg";
+    strcpy(path_buffer, PATH_PREFIX);
+    strcat(path_buffer, file);
+    stbi_uc* pixels = stbi_load(path_buffer, 
                                 &tex_width, 
                                 &tex_height, 
                                 &tex_channels, 
                                 STBI_rgb_alpha);
     VkDeviceSize image_size = tex_width * tex_height * 4;
     if (!pixels) {
-        printf("Failed to load texture image: %s\n", tex_path);
+        printf("Failed to load texture image: %s\n", path_buffer);
         return 1;
     }
     VkBuffer staging_buffer;
@@ -1568,8 +1575,8 @@ void update_uniform_buffer()
     ubo.model = glm::rotate(ubo.model, 
                             time * glm::radians(90.f), 
                             glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 view = glm::lookAt(glm::vec3(200.0, 200.0, 200.0), 
-                           glm::vec3(0.0, 0.0, 70.0), 
+    glm::mat4 view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
+                           glm::vec3(0.0, 0.0, 0.0), 
                            glm::vec3(0.0, 0.0, 1.0));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
             (float) swap_chain_extent.width / (float) swap_chain_extent.height, 
