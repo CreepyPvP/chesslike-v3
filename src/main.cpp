@@ -1278,6 +1278,8 @@ void transition_image_layout(VkImage image,
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
             VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
         printf("Unsupported layout transition\n");
         return;
@@ -1500,9 +1502,9 @@ Err init_vulkan()
     ENSURE(create_command_pool(), 10);
     create_depth_resources();
     ENSURE(create_framebuffers(), 9);
-    ENSURE(create_texture_image(), 20);
-    create_texture_image_view();
-    create_texture_sampler();
+    // ENSURE(create_texture_image(), 20);
+    // create_texture_image_view();
+    // create_texture_sampler();
     ENSURE(create_vertex_buffer(), 11);
     ENSURE(create_index_buffer(), 12);
     ENSURE(create_uniform_buffer(), 16);
@@ -1514,7 +1516,7 @@ Err init_vulkan()
     return 0;
 }
 
-Err record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
+void record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
 {
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1522,7 +1524,7 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     begin_info.pInheritanceInfo = NULL;
     if (vkBeginCommandBuffer(buffer, &begin_info) != VK_SUCCESS) {
         printf("Failed to begin recording command buffer\n");
-        return 1;
+        return;
     }
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1531,8 +1533,8 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = swap_chain_extent;
     VkClearValue clear_values[] = {
-        {{0.0f, 0.0f, 0.0f, 1.0f}},     // Color buffer
-        {1.0f, 0}                       // Depth buffer
+        {{6.0 / 255, 75.0 / 255, 132.0 / 255, 1.0f}},       // Color buffer
+        {1.0f, 0}                                           // Depth buffer
     };
     render_pass_info.clearValueCount = 2;
     render_pass_info.pClearValues = clear_values;
@@ -1559,22 +1561,18 @@ Err record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     vkCmdEndRenderPass(buffer);
     if (vkEndCommandBuffer(buffer) != VK_SUCCESS) {
         printf("Failed to record command buffer\n");
-        return 2;
+        return;
     }
-    return 0;
+    return;
 }
 
 void update_uniform_buffer() 
 {
     float time = glfwGetTime();
-
     UniformBufferObject ubo;
     ubo.model = glm::rotate(glm::mat4(1.0), 
-                            glm::radians(90.f), 
-                            glm::vec3(1.0f, 0.0f, 0.0f));
-    ubo.model = glm::rotate(ubo.model, 
                             time * glm::radians(90.f), 
-                            glm::vec3(0.0f, 1.0f, 0.0f));
+                            glm::vec3(0.0f, 0.0f, 1.0f));
     glm::mat4 view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
                            glm::vec3(0.0, 0.0, 0.0), 
                            glm::vec3(0.0, 0.0, 1.0));
@@ -1584,7 +1582,6 @@ void update_uniform_buffer()
             1000.0f);
     proj[1][1] *= -1;
     ubo.proj_view = proj * view;
-
     memcpy(uniform_buffers_mapped[current_frame], &ubo, sizeof(ubo));
 }
 
