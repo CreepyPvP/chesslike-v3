@@ -27,14 +27,13 @@ void main()
     vec3 c_warm = vec3(0.3, 0.3, 0) + 0.25 * c_surface;
     vec3 c_highlight = vec3(2, 2, 2);
 
-    // out_color = vec4(0.5 * c_cool, 1.0);
-    // for (int i = 0; i < light_count; ++i) {
-    //     vec3 l = light_dir[i];
-    //     vec3 c_light = light_colors[i];
-    //     vec3 r = reflect(-l, n);
-    //     float s = clamp(100 * dot(r, v) - 97, 0, 1);
-    //     vec3 c_wh = mix(c_warm, c_highlight, s);
-    //     out_color.rgb += clamp(dot(l, n), 0, 1) * c_light * c_wh;
-    // }
-    out_color = vec4(n, 1);
+    out_color = vec4(0.5 * c_cool, 1.0);
+    for (int i = 0; i < light_count; ++i) {
+        vec3 l = light_dir[i];
+        vec3 c_light = light_colors[i];
+        vec3 r = reflect(-l, n);
+        float s = clamp(100 * dot(r, v) - 97, 0, 1);
+        vec3 c_wh = mix(c_warm, c_highlight, s);
+        out_color.rgb += clamp(dot(l, n), 0, 1) * c_light * c_wh;
+    }
 }
