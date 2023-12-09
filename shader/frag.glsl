@@ -6,10 +6,10 @@ layout(location = 1) in vec3 in_pos;
 
 layout(location = 0) out vec4 out_color;
 
-int light_count = 1;
+int light_count = 2;
 vec3 light_colors[] = {
-    vec3(0.5, 0.7, 0.4),
-    vec3(0.7, 0.5, 0.5)
+    vec3(0.3, 0.7, 0.3),
+    vec3(0.8, 0.3, 0.3)
 };
 vec3 light_dir[] = {
     normalize(vec3(1, 0, 0)),
@@ -18,7 +18,7 @@ vec3 light_dir[] = {
 
 void main() 
 {
-    vec3 camera_pos = vec3(2, 2, 2);
+    vec3 camera_pos = vec3(0, 40, 10);
     vec3 n = normalize(in_normal);
     vec3 v = normalize(camera_pos - in_pos);
 
@@ -29,7 +29,7 @@ void main()
 
     out_color = vec4(0.5 * c_cool, 1.0);
     for (int i = 0; i < light_count; ++i) {
-        vec3 l = light_dir[i];
+        vec3 l = normalize(light_dir[i]);
         vec3 c_light = light_colors[i];
         vec3 r = reflect(-l, n);
         float s = clamp(100 * dot(r, v) - 97, 0, 1);

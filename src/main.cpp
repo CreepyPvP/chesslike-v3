@@ -1211,7 +1211,7 @@ Err load_assets()
 {
     i32 file_len;
     // char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
-    char* buffer = read_file("assets/Cube.mod", &file_len);
+    char* buffer = read_file("assets/default.mod", &file_len);
     if (!buffer)
         return 1;
 
@@ -1592,14 +1592,17 @@ void update_uniform_buffer()
     for (u32 i = 0; i < OBJECT_COUNT; ++i) {
         UniformBufferObject ubo;
         if (i == 0) {
-            ubo.model = glm::translate(glm::mat4(1.0), glm::vec3(2, 0, 0));
+            ubo.model = glm::translate(glm::mat4(1.0), glm::vec3(10, 0, -5));
         } else {
-            ubo.model = glm::translate(glm::mat4(1.0), glm::vec3(-2, 0, 0));
+            ubo.model = glm::translate(glm::mat4(1.0), glm::vec3(-10, 0, -5));
         }
         ubo.model = glm::rotate(ubo.model, 
+                                glm::radians(90.f), 
+                                glm::vec3(1.0f, 0.0f, 0.0f));
+        ubo.model = glm::rotate(ubo.model, 
                                 time * glm::radians(90.f), 
-                                glm::vec3(0.0f, 0.0f, 1.0f));
-        glm::mat4 view = glm::lookAt(glm::vec3(4.0, 4.0, 4.0), 
+                                glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 view = glm::lookAt(glm::vec3(0.0, 40.0, 10.0), 
                                      glm::vec3(0.0, 0.0, 0.0), 
                                      glm::vec3(0.0, 0.0, 1.0));
         glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
