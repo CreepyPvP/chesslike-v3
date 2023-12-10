@@ -8,15 +8,15 @@ layout(location = 1) in vec3 in_pos;
 
 layout(location = 0) out vec4 out_color;
 
-int light_count = 1;
+int light_count = 2;
 vec3 light_colors[] = {
-    vec3(1.0, 1.0, 1.0),
-    vec3(0.7, 0.5, 0.5)
+    vec3(0.2, 1.0, 1.0),
+    vec3(0.7, 0.2, 0.2)
 };
 
 vec3 light_dir[] = {
     normalize(vec3(0, 1, 0)),
-    normalize(vec3(-1, 7, 2))
+    normalize(vec3(-1, 0, 1))
 };
 
 vec3 specular_color = vec3(0.02, 0.02, 0.02);
