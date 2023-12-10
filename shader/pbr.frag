@@ -1,5 +1,8 @@
 #version 450
 
+#define PI 3.14
+#define NDF_GGX
+
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_pos;
 
@@ -7,19 +10,97 @@ layout(location = 0) out vec4 out_color;
 
 int light_count = 1;
 vec3 light_colors[] = {
-    vec3(0.5, 0.7, 0.4),
+    vec3(1.0, 1.0, 1.0),
     vec3(0.7, 0.5, 0.5)
 };
+
 vec3 light_dir[] = {
-    normalize(vec3(1, 0, 0)),
+    normalize(vec3(0, 1, 0)),
     normalize(vec3(-1, 7, 2))
 };
 
+vec3 specular_color = vec3(0.02, 0.02, 0.02);
+vec3 diffuse_color = vec3(0.14, 0.14, 0.4);
+// smoothness
+float alpha = 1.0;
+float roughness = 0.15;
+
+
+float a(vec3 n, vec3 s)
+{
+    return dot(n, s) / (alpha * sqrt(1 - dot(n, s) * dot(n, s)));
+}
+
+float bin_clamp(float x)
+{
+    return x > 0 ? 1 : 0;
+}
+
+#ifdef NDF_GGX
+float ndf_lambda(float a)
+{
+    return (-1 + sqrt(1 + 1 / (a * a))) / 2;
+}
+
+float ndf(vec3 n, vec3 m)
+{
+    float a = roughness * roughness;
+    float x = bin_clamp(dot(n, m)) * a * a;
+    float y = 1 + dot(n, m) * dot(n, m) * (a * a - 1);
+    float z = PI * y * y;
+    return x / z;
+}
+#endif
+
+vec3 fresnel(vec3 n, vec3 l)
+{
+    return specular_color + (vec3(1, 1, 1) - specular_color) * pow(1 - clamp(dot(n, l), 0, 1), 5);
+}
+
+float lambda(float phi) 
+{
+    return 1 - exp(-7.3 * phi * phi);
+}
+
+float shadow_masking(vec3 l, vec3 v, vec3 m, vec3 n) 
+{
+    float x = bin_clamp(dot(m, v)) * bin_clamp(dot(m, l));
+    float a_v = a(n, v);
+    float a_l = a(n, l);
+    float y = 1 + ndf_lambda(a_v) + ndf_lambda(a_l);
+    return x / y;
+}
+
+vec3 brdf(vec3 l, vec3 v, vec3 n) 
+{
+    vec3 h = normalize(l + v);
+
+    vec3 fresnel_term = fresnel(h, l);
+    float divider = 4 * abs(dot(n, l)) * abs(dot(n, v));
+    vec3 specular = fresnel_term * ndf(n, h) * shadow_masking(l, v, h, n) / divider;
+
+    vec3 f_smooth = 21 / 20 * (1 - specular_color) * (1 - pow(1 - dot(n, l), 5)) * (1 - pow(1 - dot(n, v), 5));
+    float k_facing = 0.5 + 0.5 * dot(l, v);
+    float f_rough = k_facing * (0.9 - 0.4 * k_facing) * ((0.5 + dot(n, h)) / (dot(n, h)));
+    float f_multi = 0.3641 * roughness;
+    vec3 smooth_term = diffuse_color * f_multi + mix(f_smooth, f_rough * vec3(1, 1, 1), roughness);
+    vec3 diffuse = bin_clamp(dot(n, l)) * bin_clamp(dot(n, v)) * diffuse_color / PI * smooth_term;
+
+    return diffuse + specular;
+}
+
 void main() 
 {
-    vec3 camera_pos = vec3(2, 2, 2);
+    vec3 camera_pos = vec3(0, 40, 10);
     vec3 n = normalize(in_normal);
     vec3 v = normalize(camera_pos - in_pos);
 
-    out_color = vec4(0, 0, 1, 1);
+    out_color = vec4(0, 0, 0, 1);
+    for (int i = 0; i < light_count; ++i) {
+        vec3 l = light_dir[i];
+        vec3 c_light = light_colors[i];
+
+        out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
+    }
+    out_color.rgb *= PI;
 }
