@@ -18,13 +18,13 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-
 #include "defines.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
 
 #define OBJECT_COUNT 2
+#define AA_SAMPLE_SHADING
 
 const u32 width = 1280;
 const u32 height = 720;
@@ -418,6 +418,9 @@ Err create_logical_device()
     }
     VkPhysicalDeviceFeatures device_features{};
     device_features.samplerAnisotropy = VK_TRUE;
+#ifdef AA_SAMPLE_SHADING
+    device_features.sampleRateShading = VK_TRUE;
+#endif
     VkDeviceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     create_info.queueCreateInfoCount = queue_fam_count;
@@ -728,7 +731,12 @@ Err create_graphics_pipeline()
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType =
         VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+#ifdef AA_SAMPLE_SHADING
+    multisampling.sampleShadingEnable = VK_TRUE;
+    multisampling.minSampleShading = 0.2f;
+#else
     multisampling.sampleShadingEnable = VK_FALSE;
+#endif
     multisampling.rasterizationSamples = msaa_samples;
     VkPipelineColorBlendAttachmentState color_blend_attachment{};
     color_blend_attachment.colorWriteMask =
