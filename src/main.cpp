@@ -17,8 +17,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-#include "defines.h"
+#include "include/stb_image.h"
+#include "include/defines.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1

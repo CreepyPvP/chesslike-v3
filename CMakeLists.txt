@@ -70,7 +70,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC ${IMGUI_ROOT_DIR}
     PUBLIC ${IMGUI_ROOT_DIR}/backends
     PUBLIC ${GLM_ROOT_DIR}/include
-    PUBLIC include
+    PUBLIC .
 )
 
 if(MSVC)
