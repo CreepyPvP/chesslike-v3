@@ -197,11 +197,11 @@ u8 check_validation_layer_support()
     return 1;
 }
 
-Err create_instance() 
+void create_instance() 
 {
     if (!check_validation_layer_support()) {
         printf("Validation layers requested, but not available\n");
-        return 1;
+        exit(1);
     }
     VkApplicationInfo app_info{};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -228,24 +228,22 @@ Err create_instance()
     }
     if (vkCreateInstance(&create_info, NULL, &instance)) {
         printf("Failed to create instance\n");
-        return 2;
+        exit(1);
     }
-    return 0;
 }
 
-Err create_surface() 
+void create_surface() 
 {
     if (glfwCreateWindowSurface(instance, 
                                 window, 
                                 NULL, 
                                 &surface) != VK_SUCCESS) {
         printf("Failed to create window surface\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
-u8 check_device_extension_support(VkPhysicalDevice device) 
+bool check_device_extension_support(VkPhysicalDevice device) 
 {
     u32 extension_count;
     vkEnumerateDeviceExtensionProperties(device, NULL, &extension_count, NULL);
@@ -255,18 +253,18 @@ u8 check_device_extension_support(VkPhysicalDevice device)
     vkEnumerateDeviceExtensionProperties(device, NULL, &extension_count,
                                          available_extensions);
     for (u32 i = 0; i < device_extension_count; ++i) {
-        u8 found = 0;
+        bool found = false;
         for (u32 j = 0; j < extension_count; ++j) {
             if (strcmp(device_extensions[i], 
                        available_extensions[j].extensionName) == 0) {
-                found = 1;
+                found = true;
                 break;
             }
         }
         if (!found)
-            return 0;
+            return false;
     }
-    return 1;
+    return true;
   }
 
 SwapChainSupportDetails query_swap_chain_support(VkPhysicalDevice device) 
@@ -340,10 +338,6 @@ QueueFamilyIndices find_queue_families(VkPhysicalDevice device)
 
 bool is_device_suitable(VkPhysicalDevice device) 
 {
-    // VkPhysicalDeviceProperties device_properties;
-    // VkPhysicalDeviceFeatures device_features;
-    // vkGetPhysicalDeviceProperties(device, &device_properties);
-    // vkGetPhysicalDeviceFeatures(device, &device_features);
     queue_indices = find_queue_families(device);
     bool extensions_support = check_device_extension_support(device);
     if (extensions_support) {
@@ -372,13 +366,13 @@ VkSampleCountFlagBits get_max_usable_sample_count()
     return VK_SAMPLE_COUNT_1_BIT;
 }
 
-Err pick_physical_device(VkPhysicalDevice* device) 
+void pick_physical_device(VkPhysicalDevice* device) 
 {
     u32 device_count = 0;
     vkEnumeratePhysicalDevices(instance, &device_count, NULL);
     if (device_count == 0) {
         printf("Failed to find GPU with Vulkan support!\n");
-        return 1;
+        exit(1);
     }
     VkPhysicalDevice* devices = 
         (VkPhysicalDevice*) malloc(sizeof(VkPhysicalDevice) * device_count);
@@ -388,15 +382,15 @@ Err pick_physical_device(VkPhysicalDevice* device)
         if (is_device_suitable(current)) {
             *device = current;
             msaa_samples = get_max_usable_sample_count();
-            return 0;
+            return;
         }
     }
 
     printf("Failed to find a suitable GPU\n");
-    return 2;
+    exit(1);
 }
 
-Err create_logical_device() 
+void create_logical_device() 
 {
     VkDeviceQueueCreateInfo queue_create_infos[2];
     u32 queue_families[2];
@@ -437,11 +431,11 @@ Err create_logical_device()
     }
     if (vkCreateDevice(physical_device, &create_info, NULL, &device)) {
         printf("Failed to create logical device\n");
-        return 1;
+        exit(1);
     }
     vkGetDeviceQueue(device, queue_indices.graphics, 0, &graphics_queue);
     vkGetDeviceQueue(device, queue_indices.present, 0, &present_queue);
-    return 0;
+    return;
 }
   
 VkSurfaceFormatKHR choose_swap_surface_format(VkSurfaceFormatKHR* formats, 
@@ -498,7 +492,7 @@ VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR* capabilities)
     }
 }
 
-Err create_swap_chain() 
+void create_swap_chain() 
 {
     SwapChainSupportDetails swap_chain_support =
         query_swap_chain_support(physical_device);
@@ -528,13 +522,13 @@ Err create_swap_chain()
         queue_indices.present
     };
     if (queue_indices.present != queue_indices.graphics) {
-      create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-      create_info.queueFamilyIndexCount = 2;
-      create_info.pQueueFamilyIndices = queue_family_indices;
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = queue_family_indices;
     } else {
-      create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      create_info.queueFamilyIndexCount = 0;
-      create_info.pQueueFamilyIndices = NULL;
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.queueFamilyIndexCount = 0;
+        create_info.pQueueFamilyIndices = NULL;
     }
     create_info.preTransform = swap_chain_support.capabilities.currentTransform;
     create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -544,7 +538,7 @@ Err create_swap_chain()
     if (vkCreateSwapchainKHR(device, &create_info, NULL, &swap_chain) !=
         VK_SUCCESS) {
         printf("Failed to create swap chain!\n");
-        return 1;
+        exit(1);
     }
     vkGetSwapchainImagesKHR(device, swap_chain, &image_count, NULL);
     swap_chain_images.resize(image_count);
@@ -554,7 +548,6 @@ Err create_swap_chain()
                             swap_chain_images.data());
     swap_chain_image_format = surface_format.format;
     swap_chain_extent = extent;
-    return 0;
 }
 
 VkImageView create_image_view(VkImage image, 
@@ -576,13 +569,13 @@ VkImageView create_image_view(VkImage image,
                           &view_info, 
                           NULL, 
                           &image_view) != VK_SUCCESS) {
-        // TODO: do something about this one
         printf("Failed to create texture image view\n");
+        exit(1);
     }
     return image_view;
 }
 
-Err create_image_views() 
+void create_image_views() 
 {
     swap_chain_image_views.resize(swap_chain_images.size());
     for (u32 i = 0; i < swap_chain_images.size(); ++i) {
@@ -590,10 +583,9 @@ Err create_image_views()
                                                     swap_chain_image_format,
                                                     VK_IMAGE_ASPECT_COLOR_BIT);
     }
-    return 0;
 }
 
-Err create_shader_module(const char* code, u32 len, VkShaderModule* module) 
+void create_shader_module(const char* code, u32 len, VkShaderModule* module) 
 {
     VkShaderModuleCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -602,9 +594,8 @@ Err create_shader_module(const char* code, u32 len, VkShaderModule* module)
     if (vkCreateShaderModule(device, &create_info, NULL, module) !=
         VK_SUCCESS) {
         printf("Failed to create shader module\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
 char* read_file(const char* file, i32* flen)
@@ -627,7 +618,7 @@ char* read_file(const char* file, i32* flen)
     return buf;
 }
 
-Err create_descriptor_set_layout() 
+void create_descriptor_set_layout() 
 {
     VkDescriptorSetLayoutBinding layout_binding{};
     layout_binding.binding = 0;
@@ -644,27 +635,24 @@ Err create_descriptor_set_layout()
                                     NULL, 
                                     &descriptor_set_layout) != VK_SUCCESS) {
         printf("Failed to create descriptor set layout\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
-Err create_graphics_pipeline() 
+void create_graphics_pipeline() 
 {
     VkShaderModule vert_shader;
     VkShaderModule frag_shader;
     i32 len;
     char* buffer = read_file("vert.spv", &len);
     if (!buffer)
-        return 10;
-    if (create_shader_module(buffer, len, &vert_shader))
-        return 5;
+        exit(1);
+    create_shader_module(buffer, len, &vert_shader);
     free(buffer);
     buffer = read_file("frag.spv", &len);
     if (!buffer)
-        return 10;
-    if (create_shader_module(buffer, len, &frag_shader))
-        return 6;
+        exit(1);
+    create_shader_module(buffer, len, &frag_shader);
     free(buffer);
     VkPipelineShaderStageCreateInfo vert_create_info{};
     vert_create_info.sType =
@@ -756,7 +744,7 @@ Err create_graphics_pipeline()
     if (vkCreatePipelineLayout(device, &pipeline_layout_info, NULL,
                                &pipeline_layout) != VK_SUCCESS) {
         printf("Failed to create pipeline layout\n");
-        return 1;
+        exit(1);
     }
     VkPipelineDepthStencilStateCreateInfo depth_stencil{};
     depth_stencil.sType = 
@@ -788,11 +776,10 @@ Err create_graphics_pipeline()
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info,
                                   NULL, &graphics_pipeline) != VK_SUCCESS) {
         printf("Failed to create graphics pipeline\n");
-        return 2;
+        exit(1);
     }
     vkDestroyShaderModule(device, vert_shader, NULL);
     vkDestroyShaderModule(device, frag_shader, NULL);
-    return 0;
 }
 
 VkFormat find_supported_format(VkFormat* candidates, 
@@ -829,7 +816,7 @@ VkFormat find_depth_format()
                             VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 
-Err create_render_pass() 
+void create_render_pass() 
 {
     VkAttachmentDescription color_attachment{};
     color_attachment.format = swap_chain_image_format;
@@ -902,12 +889,11 @@ Err create_render_pass()
     if (vkCreateRenderPass(device, &render_pass_info, NULL, &render_pass) !=
         VK_SUCCESS) {
         printf("Failed to create render pass!\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
-Err create_framebuffers() 
+void create_framebuffers() 
 {
     swap_chain_framebuffers.resize(swap_chain_image_views.size());
     for (size_t i = 0; i < swap_chain_image_views.size(); i++) {
@@ -927,13 +913,12 @@ Err create_framebuffers()
         if (vkCreateFramebuffer(device, &framebuffer_info, NULL,
                                 &swap_chain_framebuffers[i]) != VK_SUCCESS) {
             printf("Failed to create framebuffer\n");
-            return 1;
+            exit(1);
         }
     }
-    return 0;
 }
 
-Err create_command_pool() 
+void create_command_pool() 
 {
     VkCommandPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -942,9 +927,8 @@ Err create_command_pool()
     if (vkCreateCommandPool(device, &pool_info, NULL, &command_pool) !=
         VK_SUCCESS) {
         printf("Failed to create command pool\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
 VkCommandBuffer begin_single_time_commands()
@@ -997,12 +981,11 @@ u32 find_memory_type(u32 type_filter, VkMemoryPropertyFlags properties)
             return i;
         }
     }
-    // TODO: Error handling?
     printf("Failed to find suitable memory type\n");
-    return 1000;
+    exit(1);
 }
 
-Err create_buffer(VkDeviceSize size, 
+void create_buffer(VkDeviceSize size, 
                   VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags properties, 
                   VkBuffer &buffer,
@@ -1015,7 +998,7 @@ Err create_buffer(VkDeviceSize size,
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     if (vkCreateBuffer(device, &buffer_info, NULL, &buffer) != VK_SUCCESS) {
         printf("Failed to create vertex buffer\n");
-        return 1;
+        exit(1);
     }
     VkMemoryRequirements mem_requirements;
     vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
@@ -1027,67 +1010,60 @@ Err create_buffer(VkDeviceSize size,
     if (vkAllocateMemory(device, &alloc_info, NULL, &buffer_memory) !=
         VK_SUCCESS) {
         printf("Failed to allocate vertex buffer memory\n");
-        return 2;
+        exit(1);
     }
     vkBindBufferMemory(device, buffer, buffer_memory, 0);
-    return 0;
 }
 
-Err create_vertex_buffer() 
+void create_vertex_buffer() 
 {
     VkDeviceSize buffer_size = vertex_count * sizeof(Vertex);
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    if (create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+    create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        staging_buffer, staging_buffer_memory))
-        return 1;
+                        staging_buffer, staging_buffer_memory);
     void *data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
     memcpy(data, vertices, buffer_size);
     vkUnmapMemory(device, staging_buffer_memory);
-    if (create_buffer(buffer_size,
+    create_buffer(buffer_size,
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer,
-                        vertex_buffer_memory))
-        return 2;
+                        vertex_buffer_memory);
     copy_buffer(staging_buffer, vertex_buffer, buffer_size);
     vkDestroyBuffer(device, staging_buffer, NULL);
     vkFreeMemory(device, staging_buffer_memory, NULL);
-    return 0;
 }
 
-Err create_index_buffer() 
+void create_index_buffer() 
 {
     VkDeviceSize buffer_size = index_count * sizeof(u32);
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    if (create_buffer(buffer_size, 
+    create_buffer(buffer_size, 
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                         staging_buffer, 
-                        staging_buffer_memory))
-        return 1;
+                        staging_buffer_memory);
     void *data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
     memcpy(data, indices, buffer_size);
     vkUnmapMemory(device, staging_buffer_memory);
-    if (create_buffer(buffer_size,
+    create_buffer(buffer_size,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
             index_buffer, 
-            index_buffer_memory))
-        return 2;
+            index_buffer_memory);
     copy_buffer(staging_buffer, index_buffer, buffer_size);
     vkDestroyBuffer(device, staging_buffer, NULL);
     vkFreeMemory(device, staging_buffer_memory, NULL);
-    return 0;
 }
 
-Err create_uniform_buffer() 
+void create_uniform_buffer() 
 {
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
@@ -1103,11 +1079,11 @@ Err create_uniform_buffer()
     uniform_buffers_memory.resize(max_frames_in_flight);
     uniform_buffers_mapped.resize(max_frames_in_flight);
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
-        ENSURE(create_buffer(buffer_size, 
+        create_buffer(buffer_size, 
                       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                       uniform_buffers[i],
-                      uniform_buffers_memory[i]), 1)
+                      uniform_buffers_memory[i]);
         vkMapMemory(device, 
                     uniform_buffers_memory[i], 
                     0, 
@@ -1115,10 +1091,9 @@ Err create_uniform_buffer()
                     0, 
                     &uniform_buffers_mapped[i]);
     }
-    return 0;
 }
 
-Err create_descriptor_pool() 
+void create_descriptor_pool() 
 {
     VkDescriptorPoolSize pool_size{};
     pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -1133,12 +1108,11 @@ Err create_descriptor_pool()
                                NULL, 
                                &descriptor_pool) != VK_SUCCESS) {
         printf("Failed to create descriptor pool\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
-Err create_descriptor_sets() 
+void create_descriptor_sets() 
 {
     std::vector<VkDescriptorSetLayout> layouts(max_frames_in_flight, 
                                                descriptor_set_layout);
@@ -1152,7 +1126,7 @@ Err create_descriptor_sets()
                                  &alloc_info, 
                                  descriptor_sets.data()) != VK_SUCCESS) {
         printf("Failed to allocate descriptor sets\n");
-        return 1;
+        exit(1);
     }
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
         VkDescriptorBufferInfo buffer_info{};
@@ -1172,7 +1146,6 @@ Err create_descriptor_sets()
         descriptor_write.pTexelBufferView = NULL;
         vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
     }
-    return 0;
 }
 
 void cleanup_swapchain() 
@@ -1196,7 +1169,7 @@ void create_depth_resources();
 
 void create_color_resources();
 
-Err recreate_swap_chain() 
+void recreate_swap_chain() 
 {
     i32 width = 0;
     i32 height = 0;
@@ -1207,18 +1180,14 @@ Err recreate_swap_chain()
     }
     vkDeviceWaitIdle(device);
     cleanup_swapchain();
-    if (create_swap_chain())
-        return 1;
-    if (create_image_views())
-        return 2;
+    create_swap_chain();
+    create_image_views();
     create_color_resources();
     create_depth_resources();
-    if (create_framebuffers())
-        return 3;
-    return 0;
+    create_framebuffers();
 }
 
-Err create_command_buffers() 
+void create_command_buffers() 
 {
     command_buffers.resize(max_frames_in_flight);
     VkCommandBufferAllocateInfo alloc_info{};
@@ -1229,12 +1198,11 @@ Err create_command_buffers()
     if (vkAllocateCommandBuffers(device, &alloc_info, command_buffers.data()) !=
         VK_SUCCESS) {
         printf("Failed to allocate command buffers\n");
-        return 1;
+        exit(1);
     }
-    return 0;
 }
 
-Err create_sync_objects() 
+void create_sync_objects() 
 {
     image_available_semaphores.resize(max_frames_in_flight);
     render_finished_semaphores.resize(max_frames_in_flight);
@@ -1252,19 +1220,18 @@ Err create_sync_objects()
             vkCreateFence(device, &fence_info, NULL, &in_flight_fences[i]) !=
             VK_SUCCESS) {
             printf("Failed to create semaphore\n");
-            return 1;
+            exit(1);
         }
     }
-    return 0;
 }
 
-Err load_assets() 
+void load_assets() 
 {
     i32 file_len;
     // char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
     char* buffer = read_file("assets/default.mod", &file_len);
     if (!buffer)
-        return 1;
+        exit(1);
 
     u32* int_ptr = (u32*) buffer;
     vertex_count = *int_ptr;
@@ -1291,7 +1258,6 @@ Err load_assets()
         indices[i] = *(int_ptr++);
     }
     free(buffer);
-    return 0;
 }
 
 bool has_stencil_component(VkFormat format)
@@ -1360,7 +1326,7 @@ void transition_image_layout(VkImage image,
     end_single_time_commands(cmd_buffer);
 }
 
-Err create_image(u32 width, 
+void create_image(u32 width, 
                   u32 height, 
                   VkSampleCountFlagBits num_samples,
                   VkFormat format, 
@@ -1390,7 +1356,7 @@ Err create_image(u32 width,
                       NULL, 
                       image) != VK_SUCCESS) {
         printf("Failed to create image\n");
-        return 2;
+        exit(1);
     }
     VkMemoryRequirements mem_requirements;
     vkGetImageMemoryRequirements(device, *image, &mem_requirements);
@@ -1405,10 +1371,9 @@ Err create_image(u32 width,
                          NULL, 
                          image_memory) != VK_SUCCESS) {
         printf("Failed to allocate image memory\n");
-        return 3;
+        exit(3);
     }
     vkBindImageMemory(device, *image, *image_memory, 0);
-    return 0;
 }
 
 
@@ -1462,7 +1427,7 @@ void copy_buffer_to_image(VkBuffer buffer,
     end_single_time_commands(cmd_buffer);
 }
 
-Err create_texture_image()
+void create_texture_image()
 {
     i32 tex_width;
     i32 tex_height;
@@ -1479,7 +1444,7 @@ Err create_texture_image()
     VkDeviceSize image_size = tex_width * tex_height * 4;
     if (!pixels) {
         printf("Failed to load texture image: %s\n", path_buffer);
-        return 1;
+        exit(1);
     }
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
@@ -1517,7 +1482,6 @@ Err create_texture_image()
                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vkDestroyBuffer(device, staging_buffer, NULL);
     vkFreeMemory(device, staging_buffer_memory, NULL);
-    return 0;
 }
 
 void create_texture_image_view()
@@ -1552,8 +1516,8 @@ void create_texture_sampler()
                         &sampler_info, 
                         NULL, 
                         &texture_sampler) != VK_SUCCESS) {
-        // TODO: handle this one
         printf("Failed to create texture sampler\n");
+        exit(1);
     }
 }
 
@@ -1575,33 +1539,31 @@ void create_color_resources()
                                          VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-Err init_vulkan() 
+void init_vulkan() 
 {
-    ENSURE(create_instance(), 1);
-    ENSURE(create_surface(), 2);
-    ENSURE(pick_physical_device(&physical_device), 3);
-    ENSURE(create_logical_device(), 4);
-    ENSURE(create_swap_chain(), 5);
-    ENSURE(create_image_views(), 6);
-    ENSURE(create_render_pass(), 7);
-    ENSURE(create_descriptor_set_layout(), 15);
-    ENSURE(create_graphics_pipeline(), 8);
-    ENSURE(create_command_pool(), 10);
+    create_instance();
+    create_surface();
+    pick_physical_device(&physical_device);
+    create_logical_device();
+    create_swap_chain();
+    create_image_views();
+    create_render_pass();
+    create_descriptor_set_layout();
+    create_graphics_pipeline();
+    create_command_pool();
     create_color_resources();
     create_depth_resources();
-    ENSURE(create_framebuffers(), 9);
+    create_framebuffers();
     // ENSURE(create_texture_image(), 20);
     // create_texture_image_view();
     // create_texture_sampler();
-    ENSURE(create_vertex_buffer(), 11);
-    ENSURE(create_index_buffer(), 12);
-    ENSURE(create_uniform_buffer(), 16);
-    ENSURE(create_descriptor_pool(), 17);
-    ENSURE(create_descriptor_sets(), 18);
-    ENSURE(create_command_buffers(), 13);
-    ENSURE(create_sync_objects(), 14);
-
-    return 0;
+    create_vertex_buffer();
+    create_index_buffer();
+    create_uniform_buffer();
+    create_descriptor_pool();
+    create_descriptor_sets();
+    create_command_buffers();
+    create_sync_objects();
 }
 
 void record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
@@ -1612,7 +1574,6 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     begin_info.pInheritanceInfo = NULL;
     if (vkBeginCommandBuffer(buffer, &begin_info) != VK_SUCCESS) {
         printf("Failed to begin recording command buffer\n");
-        return;
     }
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
