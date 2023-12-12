@@ -1,5 +1,7 @@
 #define DEBUG
 
+#include <stdint.h>
+
 #ifdef WIN32
 #define PATH_PREFIX "..\\..\\"
 #elif
@@ -15,13 +17,23 @@ typedef int16_t i16;
 typedef int32_t i32;
 typedef int64_t i64;
 
-typedef i8 Err;
+#define VK_CHECK(x)                                             \
+do                                                              \
+{                                                               \
+    if (x != VK_SUCCESS)                                        \
+    {                                                           \
+        printf("Detected Vulkan error: %d\n", x);               \
+        abort();                                                \
+    }                                                           \
+} while (0)
 
-#define ASSERT(line, err, err_code) if (line) {     \
-    printf(err);                                    \
-    return err_code;                                \
-}
-
-#define ENSURE(line, err_code) if (line) {          \
-    return err_code;                                \
-}
+// typedef i8 Err;
+//
+// #define ASSERT(line, err, err_code) if (line) {     \
+//     printf(err);                                    \
+//     return err_code;                                \
+// }
+//
+// #define ENSURE(line, err_code) if (line) {          \
+//     return err_code;                                \
+// }

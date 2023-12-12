@@ -4,16 +4,14 @@ project(strategy)
 
 # Clang deez nuts
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# Include debug information
 set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_STANDARD 17)
 
-# Variables for Paths of External Libraries
 set(GLFW_ROOT_DIR external/glfw)
 set(GLM_ROOT_DIR external/glm)
 set(IMGUI_ROOT_DIR external/imgui)
+set(VKBOOTSTRAP_ROOT_DIR external/vk-bootstrap)
 
-# Add all Header Files
 file(GLOB_RECURSE HEADER_FILES 
 	${CMAKE_SOURCE_DIR}/include/*.h
 	${CMAKE_SOURCE_DIR}/include/*.hpp
@@ -21,7 +19,6 @@ file(GLOB_RECURSE HEADER_FILES
 
 
 IF (WIN32)
-    # Windows libraries:
     set(LIBS glfw vulkan-1 glm)
     set(Vulkan_INCLUDE_DIRS C:/VulkanSDK/1.3.268.0/Include)
     set(Vulkan_LIB_DIRS C:/VulkanSDK/1.3.268.0/Lib)
@@ -30,7 +27,6 @@ IF (WIN32)
         ${CMAKE_SOURCE_DIR}/src/*.cpp
         ${CMAKE_SOURCE_DIR}/platform/windows.cpp
 
-        # IMGUI
         ${IMGUI_ROOT_DIR}/imgui.cpp
         ${IMGUI_ROOT_DIR}/imgui_demo.cpp
         ${IMGUI_ROOT_DIR}/imgui_draw.cpp
@@ -38,16 +34,16 @@ IF (WIN32)
         ${IMGUI_ROOT_DIR}/imgui_widgets.cpp
         ${IMGUI_ROOT_DIR}/backends/imgui_impl_opengl3.cpp
         ${IMGUI_ROOT_DIR}/backends/imgui_impl_glfw.cpp
+
+        ${VKBOOTSTRAP_ROOT_DIR}/src/VkBootstrap.cpp
     )
 ELSE()
-    # Linux libraries:
     set(LIBS glfw X11 vulkan glm)
 
     file(GLOB_RECURSE SOURCE_FILES 
         ${CMAKE_SOURCE_DIR}/src/*.cpp
         ${CMAKE_SOURCE_DIR}/platform/linux.cpp
 
-        # IMGUI
         ${IMGUI_ROOT_DIR}/imgui.cpp
         ${IMGUI_ROOT_DIR}/imgui_demo.cpp
         ${IMGUI_ROOT_DIR}/imgui_draw.cpp
@@ -55,6 +51,8 @@ ELSE()
         ${IMGUI_ROOT_DIR}/imgui_widgets.cpp
         ${IMGUI_ROOT_DIR}/backends/imgui_impl_opengl3.cpp
         ${IMGUI_ROOT_DIR}/backends/imgui_impl_glfw.cpp
+
+        ${VKBOOTSTRAP_ROOT_DIR}/src/VkBootstrap.cpp
     )
 ENDIF()
 
@@ -64,12 +62,14 @@ add_executable(${PROJECT_NAME} ${HEADER_FILES} ${SOURCE_FILES})
 # Add the External Libraries / Files Directory
 add_subdirectory(${GLFW_ROOT_DIR})
 add_subdirectory(${GLM_ROOT_DIR})
+add_subdirectory(${VKBOOTSTRAP_ROOT_DIR})
 
 target_include_directories(${PROJECT_NAME} 
 	PUBLIC ${GLFW_ROOT_DIR}/include
     PUBLIC ${IMGUI_ROOT_DIR}
     PUBLIC ${IMGUI_ROOT_DIR}/backends
     PUBLIC ${GLM_ROOT_DIR}/include
+    PUBLIC ${VKBOOTSTRAP_ROOT_DIR}/src
     PUBLIC .
 )
 
