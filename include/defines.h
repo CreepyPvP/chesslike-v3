@@ -1,12 +1,18 @@
-#define DEBUG
-
-#ifdef WIN32
-#define PATH_PREFIX "..\\"
-#elif
-#define PATH_PREFIX "../"
-#endif
+#pragma once
 
 #include <stdint.h>
+
+#define DEBUG
+#define PATH_PREFIX "../"
+
+#define ASSERT(line, err, err_code) if (line) {     \
+    printf(err);                                    \
+    return err_code;                                \
+}
+
+#define ENSURE(line, err_code) if (line) {          \
+    return err_code;                                \
+}
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -19,11 +25,3 @@ typedef int64_t i64;
 
 typedef i8 Err;
 
-#define ASSERT(line, err, err_code) if (line) {     \
-    printf(err);                                    \
-    return err_code;                                \
-}
-
-#define ENSURE(line, err_code) if (line) {          \
-    return err_code;                                \
-}

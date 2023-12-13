@@ -61,7 +61,7 @@ void load_scene(const char* file)
     printf("Parsing scene: %s\n", file);
     i32 version = read_version(&content);
     const char** ptr = &content;
-    while (1) {
+    while (0) {
         if (prefix("MODEL", ptr)) {
 
         }
