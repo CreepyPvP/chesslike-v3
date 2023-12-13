@@ -1,10 +1,12 @@
 #define DEBUG
 
 #ifdef WIN32
-#define PATH_PREFIX "..\\..\\"
+#define PATH_PREFIX "..\\"
 #elif
 #define PATH_PREFIX "../"
 #endif
+
+#include <stdint.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
