@@ -34,9 +34,11 @@ void Arena::dispose()
     free(base);
 }
 
-void Arena::init()
+void Arena::init(u32 bytes)
 {
-    base = (u8*) malloc(10000);
-    capacity = 10000;
+    base = (u8*) malloc(bytes);
+    capacity = bytes;
     reset();
 }
+
+Arena asset_arena;

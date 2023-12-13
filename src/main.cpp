@@ -21,6 +21,7 @@
 #include "include/defines.h"
 #include "include/utils.h"
 #include "include/assets.h"
+#include "include/arena.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
@@ -626,12 +627,12 @@ void create_graphics_pipeline()
     VkShaderModule vert_shader;
     VkShaderModule frag_shader;
     i32 len;
-    char* buffer = read_file("vert.spv", &len);
+    char* buffer = read_file("vert.spv", &len, NULL);
     if (!buffer)
         exit(1);
     create_shader_module(buffer, len, &vert_shader);
     free(buffer);
-    buffer = read_file("frag.spv", &len);
+    buffer = read_file("frag.spv", &len, NULL);
     if (!buffer)
         exit(1);
     create_shader_module(buffer, len, &frag_shader);
@@ -1211,7 +1212,7 @@ void load_assets()
 {
     i32 file_len;
     // char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
-    char* buffer = read_file("assets/default.mod", &file_len);
+    char* buffer = read_file("assets/default.mod", &file_len, NULL);
     if (!buffer)
         exit(1);
 
@@ -1761,10 +1762,18 @@ void cleanup()
     vkDestroyInstance(instance, NULL);
     glfwDestroyWindow(window);
     glfwTerminate();
+
+    asset_arena.dispose();
+}
+
+void init_allocators()
+{
+    asset_arena.init(100000);
 }
 
 i32 main() 
 {
+    init_allocators();
     init_window();
     load_assets();
     load_scene("assets/scene.sce");

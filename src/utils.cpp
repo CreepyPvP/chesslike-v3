@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 // the flen-th byte is 0
-char* read_file(const char* file, i32* flen)
+char* read_file(const char* file, i32* flen, Arena* arena)
 {
     char path_buffer[1024];
     strcpy(path_buffer, PATH_PREFIX);
@@ -17,7 +17,12 @@ char* read_file(const char* file, i32* flen)
     }
     fseek(fptr, 0, SEEK_END);
     i32 len = ftell(fptr);
-    char* buf = (char*) malloc(len + 1);
+    char* buf = NULL;
+    if (arena) {
+        buf = (char*) arena->alloc(len + 1);
+    } else {
+        buf = (char*) malloc(len + 1);
+    }
     fseek(fptr, 0, SEEK_SET);
     fread(buf, len, 1, fptr);
     buf[len] = 0;

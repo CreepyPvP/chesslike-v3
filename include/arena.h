@@ -15,5 +15,7 @@ struct Arena
     void* alloc(u32 bytes);
     void reset();
     void dispose();
-    void init();
+    void init(u32 bytes);
 };
+
+extern Arena asset_arena;
