@@ -42,3 +42,5 @@ void Arena::init(u32 bytes)
 }
 
 Arena asset_arena;
+Arena scene_arena;
+Arena tmp_arena;

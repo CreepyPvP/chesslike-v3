@@ -22,11 +22,12 @@
 #include "include/utils.h"
 #include "include/assets.h"
 #include "include/arena.h"
+#include "include/scene.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
 
-#define OBJECT_COUNT 2
+#define UNIFORM_BUF_SIZE 10
 #define AA_SAMPLE_SHADING
 
 const u32 width = 1280;
@@ -134,6 +135,10 @@ VkDeviceMemory color_image_memory;
 VkImageView color_image_view;
 
 u32 dynamic_align;
+u32 range_count = 0;
+VkMappedMemoryRange ranges[UNIFORM_BUF_SIZE];
+
+Scene scene;
 
 static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
@@ -1057,7 +1062,7 @@ void create_uniform_buffer()
             ~(min_ubo_align - 1);
     }
 
-    VkDeviceSize buffer_size = dynamic_align * OBJECT_COUNT;
+    VkDeviceSize buffer_size = dynamic_align * UNIFORM_BUF_SIZE;
     uniform_buffers.resize(max_frames_in_flight);
     uniform_buffers_memory.resize(max_frames_in_flight);
     uniform_buffers_mapped.resize(max_frames_in_flight);
@@ -1549,6 +1554,56 @@ void init_vulkan()
     create_sync_objects();
 }
 
+void flush_uniform_buffer()
+{
+    vkFlushMappedMemoryRanges(device, range_count, ranges);
+    range_count = 0;
+}
+
+void update_uniform_buffer(u32 actor_index, Actor* actor) 
+{
+    float time = glfwGetTime();
+    UniformBufferObject ubo;
+    ubo.model = glm::mat4(1.0);
+    ubo.model = glm::translate(ubo.model, 
+                               glm::vec3(actor->x, actor->y, actor->z));
+    ubo.model = glm::rotate(ubo.model, 
+                            glm::radians(actor->rot_x), 
+                            glm::vec3(1.0f, 0.0f, 0.0f));
+    ubo.model = glm::rotate(ubo.model, 
+                            glm::radians(actor->rot_y), 
+                            glm::vec3(0.0f, 1.0f, 0.0f));
+    ubo.model = glm::rotate(ubo.model, 
+                            glm::radians(actor->rot_z), 
+                            glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.model = glm::scale(ubo.model, glm::vec3(actor->scale_x, 
+                                                actor->scale_y, 
+                                                actor->scale_z));
+    glm::mat4 view = glm::lookAt(glm::vec3(0.0, 40.0, 10.0), 
+                                 glm::vec3(0.0, 0.0, 0.0), 
+                                 glm::vec3(0.0, 0.0, 1.0));
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
+                                      (float) swap_chain_extent.width / 
+                                      (float) swap_chain_extent.height, 
+                                      0.1f, 
+                                      1000.0f);
+    proj[1][1] *= -1;
+    ubo.proj_view = proj * view;
+    memcpy((char*) uniform_buffers_mapped[current_frame] + 
+                dynamic_align * actor_index, 
+           &ubo, 
+           sizeof(UniformBufferObject));
+
+    VkMappedMemoryRange range{};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.pNext = NULL;
+    range.memory = uniform_buffers_memory[current_frame];
+    range.offset = dynamic_align * actor_index;
+    range.size = sizeof(UniformBufferObject);
+    ranges[range_count] = range;
+    ++range_count;
+}
+
 void record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
 {
     VkCommandBufferBeginInfo begin_info{};
@@ -1581,16 +1636,18 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
     vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
-    for (u32 i = 0; i < OBJECT_COUNT; ++i) {
+    for (u32 i = 0; i < scene.actor_count; ++i) {
+        update_uniform_buffer(i, scene.actors + i);
+    }
+    flush_uniform_buffer();
+    for (u32 i = 0; i < scene.actor_count; ++i) {
         u32 dynamic_offset = i * dynamic_align;
         vkCmdBindDescriptorSets(buffer, 
                                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
                                 pipeline_layout,
                                 0,
-                                1,
-                                &descriptor_sets[current_frame],
-                                1,
-                                &dynamic_offset);
+                                1, &descriptor_sets[current_frame],
+                                1, &dynamic_offset);
         vkCmdDrawIndexed(buffer, index_count, 1, 0, 0, 0);
     }
     vkCmdEndRenderPass(buffer);
@@ -1599,50 +1656,6 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
         return;
     }
     return;
-}
-
-void update_uniform_buffer() 
-{
-    float time = glfwGetTime();
-    u32 range_count = 0;
-    VkMappedMemoryRange ranges[OBJECT_COUNT];
-    for (u32 i = 0; i < OBJECT_COUNT; ++i) {
-        UniformBufferObject ubo;
-        if (i == 0) {
-            ubo.model = glm::translate(glm::mat4(1.0), glm::vec3(10, 0, -5));
-        } else {
-            ubo.model = glm::translate(glm::mat4(1.0), glm::vec3(-10, 0, -5));
-        }
-        ubo.model = glm::rotate(ubo.model, 
-                                glm::radians(90.f), 
-                                glm::vec3(1.0f, 0.0f, 0.0f));
-        ubo.model = glm::rotate(ubo.model, 
-                                time * glm::radians(90.f), 
-                                glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 view = glm::lookAt(glm::vec3(0.0, 40.0, 10.0), 
-                                     glm::vec3(0.0, 0.0, 0.0), 
-                                     glm::vec3(0.0, 0.0, 1.0));
-        glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
-                                          (float) swap_chain_extent.width / 
-                                          (float) swap_chain_extent.height, 
-                                          0.1f, 
-                                          1000.0f);
-        proj[1][1] *= -1;
-        ubo.proj_view = proj * view;
-        memcpy(
-            (char*) uniform_buffers_mapped[current_frame] + dynamic_align * i, 
-            &ubo, 
-            sizeof(UniformBufferObject));
-        VkMappedMemoryRange range{};
-        range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-        range.pNext = NULL;
-        range.memory = uniform_buffers_memory[current_frame];
-        range.offset = dynamic_align * i;
-        range.size = sizeof(UniformBufferObject);
-        ranges[range_count] = range;
-        ++range_count;
-    }
-    vkFlushMappedMemoryRanges(device, range_count, ranges);
 }
 
 void draw_frame() 
@@ -1668,7 +1681,6 @@ void draw_frame()
     }
     vkResetFences(device, 1, &in_flight_fences[current_frame]);
     vkResetCommandBuffer(command_buffers[current_frame], 0);
-    update_uniform_buffer();
     record_command_buffer(command_buffers[current_frame], image_index);
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1769,14 +1781,17 @@ void cleanup()
 void init_allocators()
 {
     asset_arena.init(100000);
+    scene_arena.init(10000);
+    tmp_arena.init(10000);
 }
 
 i32 main() 
 {
     init_allocators();
     init_window();
+    scene.init();
     load_assets();
-    load_scene("assets/scene.sce");
+    load_scene("assets/scene.sce", &scene);
     init_vulkan();
     main_loop();
     cleanup();

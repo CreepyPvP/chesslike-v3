@@ -19,3 +19,5 @@ struct Arena
 };
 
 extern Arena asset_arena;
+extern Arena scene_arena;
+extern Arena tmp_arena;

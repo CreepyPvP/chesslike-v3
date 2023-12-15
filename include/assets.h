@@ -1,3 +1,5 @@
 #pragma once
 
-void load_scene(const char* file);
+#include "include/scene.h"
+
+void load_scene(const char* file, Scene* scene);
