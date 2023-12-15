@@ -23,6 +23,7 @@
 #include "include/assets.h"
 #include "include/arena.h"
 #include "include/scene.h"
+#include "include/loading.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
@@ -63,16 +64,6 @@ struct SwapChainSupportDetails
     u32 format_count;
     VkPresentModeKHR* present_modes;
     u32 present_count;
-};
-
-struct Vertex 
-{
-    float x;
-    float y;
-    float z;
-    float r;
-    float g;
-    float b;
 };
 
 struct UniformBufferObject
@@ -169,7 +160,7 @@ static void get_attr_desc(VkVertexInputAttributeDescription* attr_desc)
     attr_desc[1].binding = 0;
     attr_desc[1].location = 1;
     attr_desc[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attr_desc[1].offset = offsetof(Vertex, r);
+    attr_desc[1].offset = offsetof(Vertex, n_x);
 }
 
 void init_window() 
@@ -1236,9 +1227,9 @@ void load_assets()
         vertex.x = *(float_ptr++);
         vertex.y = *(float_ptr++);
         vertex.z = *(float_ptr++);
-        vertex.r = *(float_ptr++);
-        vertex.g = *(float_ptr++);
-        vertex.b = *(float_ptr++);
+        vertex.n_x = *(float_ptr++);
+        vertex.n_y = *(float_ptr++);
+        vertex.n_z = *(float_ptr++);
         vertices[i] = vertex;
     }
     int_ptr = (u32*) float_ptr;

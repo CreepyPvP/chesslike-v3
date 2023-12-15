@@ -1,6 +1,7 @@
 #pragma once
 
 #include "include/defines.h"
+#include "include/assets.h"
 
 struct Actor
 {
@@ -13,6 +14,8 @@ struct Actor
     float scale_x;
     float scale_y;
     float scale_z;
+
+    Model* model;
 };
 
 struct Scene 

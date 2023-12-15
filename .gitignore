@@ -1,5 +1,6 @@
 build
 .cache
+tags
 
 # Those files are too big. should use lfs at some point...
 models/Dragon.fbx
