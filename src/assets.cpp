@@ -16,10 +16,15 @@ Model* ModelBuffer::stage(Vertex* vtx,
     index_queue_len[staged_models] = index_count;
     staged_models++;
 
-    // TODO
-    return NULL;
+    Model model;
+    model.start_index = index_counter;
+    model.index_count = index_count;
+    Model* ptr = (Model*) assert_arena.alloc(sizeof(Model));
+    *ptr = model;
+    return ptr;
 }
 
+// TODO: create vertex and index buffer, memcpy data to it
 void ModelBuffer::write_to_gpu()
 {
 

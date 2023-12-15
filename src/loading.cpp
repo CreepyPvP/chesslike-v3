@@ -2,6 +2,7 @@
 #include "include/defines.h"
 #include "include/utils.h"
 #include "include/arena.h"
+#include "include/assets.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,15 @@ enum CtxType
     NONE,
     MODEL,
     ACTOR,
+};
+
+struct ModelParams
+{
+    Vertex* vertices;
+    u32* indices;
+    u32 vertex_count;
+    u32 index_count;
+    const char* name;
 };
 
 // returns true if ptr starts with prefix. 
@@ -83,10 +93,19 @@ float read_float(const char** ptr)
     return result;
 }
 
-void flush_ctx(CtxType type, Actor actor_buffer, Scene* scene)
+void flush_ctx(CtxType type, 
+               Actor actor_ctx, 
+               ModelParams model_ctx, 
+               Scene* scene)
 {
     if (type == ACTOR) {
-        scene->add(actor_buffer);
+        scene->add(actor_ctx);
+    } else if (type == MODEL) {
+        Model* ptr = model_buffer.add(model_ctx.vertices, 
+                                      model_ctx.vertex_count, 
+                                      model_ctx.indices, 
+                                      model_ctx.index_count);
+        // TODO: insert ptr into lookup table
     }
 }
 
@@ -103,35 +122,37 @@ void load_scene(const char* file, Scene* scene)
     const char** ptr = &content;
     bool reached_end = false;
     CtxType ctx_type = NONE;
-    Actor actor_buffer{};
+    Actor actor_ctx{};
+    ModelParams model_ctx{};
 
     i32 version = read_version(&content);
     while (!reached_end) {
         if (prefix("MODEL", ptr)) {
-            flush_ctx(ctx_type, actor_buffer, scene);
+            flush_ctx(ctx_type, actor_ctx, scene);
 
             skip_whitespaces(ptr);
             char* name = read_ident(ptr);
             next_line(ptr);
             ctx_type = MODEL;
-            // ctx.ptr = ...
+            model_ctx = ModelParams{};
+            model_ctx.name = name;
         } else if (prefix("ACTOR", ptr)) {
-            flush_ctx(ctx_type, actor_buffer, scene);
+            flush_ctx(ctx_type, actor_ctx, scene);
 
             skip_whitespaces(ptr);
             char* model = read_ident(ptr);
             next_line(ptr);
             ctx_type = ACTOR;
-            actor_buffer = {};
-            actor_buffer.scale_x = 1;
-            actor_buffer.scale_y = 1;
-            actor_buffer.scale_z = 1;
+            actor_ctx = {};
+            actor_ctx.scale_x = 1;
+            actor_ctx.scale_y = 1;
+            actor_ctx.scale_z = 1;
         } else if (prefix("PATH", ptr)) {
             skip_whitespaces(ptr);
             char* path = read_ident(ptr);
             next_line(ptr);
             if (ctx_type == MODEL) {
-                // set model path here
+                // TODO: load model here
             }
         } else if (prefix("POSITION", ptr)) {
             skip_whitespaces(ptr);
@@ -142,9 +163,9 @@ void load_scene(const char* file, Scene* scene)
                 skip_whitespaces(ptr);
                 float z = read_float(ptr);
                 skip_whitespaces(ptr);
-                actor_buffer.x = x;
-                actor_buffer.y = y;
-                actor_buffer.z = z;
+                actor_ctx.x = x;
+                actor_ctx.y = y;
+                actor_ctx.z = z;
             }
             next_line(ptr);
         } else if (prefix("ROTATION", ptr)) {
@@ -156,9 +177,9 @@ void load_scene(const char* file, Scene* scene)
                 skip_whitespaces(ptr);
                 float z = read_float(ptr);
                 skip_whitespaces(ptr);
-                actor_buffer.rot_x = x;
-                actor_buffer.rot_y = y;
-                actor_buffer.rot_z = z;
+                actor_ctx.rot_x = x;
+                actor_ctx.rot_y = y;
+                actor_ctx.rot_z = z;
             }
             next_line(ptr);
         } else if (prefix("SCALE", ptr)) {
@@ -170,15 +191,15 @@ void load_scene(const char* file, Scene* scene)
                 skip_whitespaces(ptr);
                 float z = read_float(ptr);
                 skip_whitespaces(ptr);
-                actor_buffer.scale_x = x;
-                actor_buffer.scale_y = y;
-                actor_buffer.scale_z = z;
+                actor_ctx.scale_x = x;
+                actor_ctx.scale_y = y;
+                actor_ctx.scale_z = z;
             }
             next_line(ptr);
         } else if (**ptr == 0) {
             reached_end = true;
         }
     }
-    flush_ctx(ctx_type, actor_buffer, scene);
+    flush_ctx(ctx_type, actor_ctx, scene);
     asset_arena.end_scope();
 }
