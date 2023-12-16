@@ -73,9 +73,7 @@ struct UniformBufferObject
 };
 
 Vertex* vertices;
-u32 vertex_count;
 u32* indices;
-u32 index_count;
 
 GLFWwindow *window;
 QueueFamilyIndices queue_indices;
@@ -996,22 +994,27 @@ void create_buffer(VkDeviceSize size,
 
 void create_vertex_buffer() 
 {
-    VkDeviceSize buffer_size = vertex_count * sizeof(Vertex);
+    VkDeviceSize buffer_size = model_buffer.vertex_counter * sizeof(Vertex);
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        staging_buffer, staging_buffer_memory);
-    void *data;
-    vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, vertices, buffer_size);
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                  staging_buffer, staging_buffer_memory);
+    u8* data;
+    vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
+    u32 byte_offset = 0;
+    for (u32 i = 0 ; i < model_buffer.staged_models; ++i) {
+        u32 bytes = model_buffer.vtx_queue_len[i] * sizeof(Vertex);
+        memcpy(data + byte_offset, model_buffer.vtx_queue[i], bytes);
+        byte_offset += bytes;
+    }
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
-                        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer,
-                        vertex_buffer_memory);
+                  VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer,
+                  vertex_buffer_memory);
     copy_buffer(staging_buffer, vertex_buffer, buffer_size);
     vkDestroyBuffer(device, staging_buffer, NULL);
     vkFreeMemory(device, staging_buffer_memory, NULL);
@@ -1019,18 +1022,23 @@ void create_vertex_buffer()
 
 void create_index_buffer() 
 {
-    VkDeviceSize buffer_size = index_count * sizeof(u32);
+    VkDeviceSize buffer_size = model_buffer.index_counter * sizeof(u32);
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, 
-                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                        staging_buffer, 
-                        staging_buffer_memory);
-    void *data;
-    vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, indices, buffer_size);
+                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                  staging_buffer, 
+                  staging_buffer_memory);
+    u8* data;
+    vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
+    u32 byte_offset = 0;
+    for (u32 i = 0; i < model_buffer.staged_models; ++i) {
+        u32 bytes = model_buffer.index_queue_len[i] * sizeof(u32);
+        memcpy(data + byte_offset, model_buffer.index_queue[i], bytes);
+        byte_offset += bytes;
+    }
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -1202,41 +1210,6 @@ void create_sync_objects()
             exit(1);
         }
     }
-}
-
-void load_assets() 
-{
-    i32 file_len;
-    // char* buffer = read_file("../models/PM3D_Cube3D2.mod", &file_len);
-    char* buffer = read_file("assets/default.mod", &file_len, NULL);
-    if (!buffer)
-        exit(1);
-
-    u32* int_ptr = (u32*) buffer;
-    vertex_count = *int_ptr;
-    ++int_ptr;
-    index_count = *int_ptr;
-    ++int_ptr;
-    
-    vertices = (Vertex*) malloc(sizeof(Vertex) * vertex_count);
-    indices = (u32*) malloc(sizeof(u32) * index_count);
-
-    float* float_ptr = (float*) int_ptr;
-    for (u32 i = 0; i < vertex_count; ++i) {
-        Vertex vertex;
-        vertex.x = *(float_ptr++);
-        vertex.y = *(float_ptr++);
-        vertex.z = *(float_ptr++);
-        vertex.n_x = *(float_ptr++);
-        vertex.n_y = *(float_ptr++);
-        vertex.n_z = *(float_ptr++);
-        vertices[i] = vertex;
-    }
-    int_ptr = (u32*) float_ptr;
-    for (u32 i = 0; i < index_count; ++i) {
-        indices[i] = *(int_ptr++);
-    }
-    free(buffer);
 }
 
 bool has_stencil_component(VkFormat format)
@@ -1633,13 +1606,19 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     flush_uniform_buffer();
     for (u32 i = 0; i < scene.actor_count; ++i) {
         u32 dynamic_offset = i * dynamic_align;
+        Model model = *(scene.actors[i].model);
         vkCmdBindDescriptorSets(buffer, 
                                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
                                 pipeline_layout,
                                 0,
                                 1, &descriptor_sets[current_frame],
                                 1, &dynamic_offset);
-        vkCmdDrawIndexed(buffer, index_count, 1, 0, 0, 0);
+        vkCmdDrawIndexed(buffer, 
+                         model.index_count, 
+                         1, 
+                         model.start_index, 
+                         model.vertex_offset, 
+                         0);
     }
     vkCmdEndRenderPass(buffer);
     if (vkEndCommandBuffer(buffer) != VK_SUCCESS) {
@@ -1771,7 +1750,7 @@ void cleanup()
 
 void init_allocators()
 {
-    asset_arena.init(100000);
+    asset_arena.init(10000000);
     scene_arena.init(10000);
     tmp_arena.init(10000);
 }
@@ -1780,8 +1759,8 @@ i32 main()
 {
     init_allocators();
     init_window();
+    model_buffer.init();
     scene.init();
-    load_assets();
     load_scene("assets/scene.sce", &scene);
     init_vulkan();
     main_loop();

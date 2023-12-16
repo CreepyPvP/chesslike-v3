@@ -17,7 +17,11 @@ void Arena::end_scope()
 
 void* Arena::alloc(u32 bytes)
 {
-    assert(current + bytes <= capacity);
+    if (current + bytes >= capacity) {
+        printf("Arena out of memory: %u, Trying to allocate: %u\n", 
+                capacity, bytes);
+        assert(false);
+    }
     void* ptr = base + current;
     current += bytes;
     return ptr;

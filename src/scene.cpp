@@ -6,7 +6,7 @@
 void Scene::init()
 {
     actor_capacity = 10;
-    actor_count = 2;
+    actor_count = 0;
     actors = (Actor*) scene_arena.alloc(sizeof(Actor) * actor_capacity);
 }
 

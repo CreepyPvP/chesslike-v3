@@ -6,6 +6,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
+#include <string.h>
+
+#define MAX_MODELS 64
 
 
 enum CtxType 
@@ -21,7 +25,7 @@ struct ModelParams
     u32* indices;
     u32 vertex_count;
     u32 index_count;
-    const char* name;
+    char* name;
 };
 
 // returns true if ptr starts with prefix. 
@@ -63,20 +67,23 @@ i32 read_version(const char** ptr)
     return version;
 }
 
-bool is_alphabetic(char c)
+bool is_char(char c)
 {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    return (c >= 'a' && c <= 'z') || 
+        (c >= 'A' && c <= 'Z') || 
+        c == '/' ||
+        c == '.';
 }
 
 char* read_ident(const char** ptr)
 {
     const char* start = *ptr;
     i32 len = 0;
-    while (is_alphabetic(**ptr)) {
+    while (is_char(**ptr)) {
         (*ptr)++;
         len++;
     }
-    char* str = (char*) asset_arena.alloc(len + 1);
+    char* str = (char*) tmp_arena.alloc(len + 1);
     for (i32 i = 0; i < len; ++i) {
         str[i] = start[i];
     }
@@ -96,24 +103,59 @@ float read_float(const char** ptr)
 void flush_ctx(CtxType type, 
                Actor actor_ctx, 
                ModelParams model_ctx, 
-               Scene* scene)
+               Scene* scene,
+               char** model_names,
+               Model** models,
+               u32* model_count)
 {
     if (type == ACTOR) {
         scene->add(actor_ctx);
     } else if (type == MODEL) {
-        Model* ptr = model_buffer.add(model_ctx.vertices, 
-                                      model_ctx.vertex_count, 
-                                      model_ctx.indices, 
-                                      model_ctx.index_count);
-        // TODO: insert ptr into lookup table
+        if (model_ctx.vertices == NULL || model_ctx.indices == NULL) {
+            printf("No path specified for model: %s\n", model_ctx.name);
+            return;
+        }
+        Model* ptr = model_buffer.stage(model_ctx.vertices, 
+                                        model_ctx.vertex_count, 
+                                        model_ctx.indices, 
+                                        model_ctx.index_count);
+        assert(*model_count < MAX_MODELS);
+        model_names[*model_count] = model_ctx.name;
+        models[*model_count] = ptr;
+        (*model_count) += 1;
     }
+}
+
+void load_model(const char* file, ModelParams* model) 
+{
+    i32 file_len;
+    char* buffer = read_file(file, &file_len, &asset_arena);
+    if (!buffer)
+        exit(1);
+
+    u32* int_ptr = (u32*) buffer;
+    u32 vertex_count = *int_ptr;
+    ++int_ptr;
+    u32 index_count = *int_ptr;
+    ++int_ptr;
+    
+    Vertex* vertex_ptr = (Vertex*) int_ptr;
+    Vertex* vertices =  vertex_ptr;
+    vertex_ptr += vertex_count;
+    int_ptr = (u32*) vertex_ptr;
+    u32* indices = int_ptr;
+
+    model->vertex_count = vertex_count;
+    model->index_count = index_count;
+    model->vertices = vertices;
+    model->indices = indices;
 }
 
 void load_scene(const char* file, Scene* scene) 
 {
     i32 len;
-    asset_arena.start_scope();
-    const char* content = read_file(file, &len, &asset_arena);
+    tmp_arena.start_scope();
+    const char* content = read_file(file, &len, &tmp_arena);
     if (!content) {
         printf("Failed to load scene: %s\n", file);
         exit(1);
@@ -124,11 +166,20 @@ void load_scene(const char* file, Scene* scene)
     CtxType ctx_type = NONE;
     Actor actor_ctx{};
     ModelParams model_ctx{};
+    char* model_names[MAX_MODELS];
+    Model* models[MAX_MODELS];
+    u32 model_count = 0;
 
     i32 version = read_version(&content);
     while (!reached_end) {
         if (prefix("MODEL", ptr)) {
-            flush_ctx(ctx_type, actor_ctx, scene);
+            flush_ctx(ctx_type, 
+                      actor_ctx, 
+                      model_ctx,
+                      scene, 
+                      model_names, 
+                      models, 
+                      &model_count);
 
             skip_whitespaces(ptr);
             char* name = read_ident(ptr);
@@ -137,7 +188,13 @@ void load_scene(const char* file, Scene* scene)
             model_ctx = ModelParams{};
             model_ctx.name = name;
         } else if (prefix("ACTOR", ptr)) {
-            flush_ctx(ctx_type, actor_ctx, scene);
+            flush_ctx(ctx_type, 
+                      actor_ctx, 
+                      model_ctx,
+                      scene, 
+                      model_names, 
+                      models, 
+                      &model_count);
 
             skip_whitespaces(ptr);
             char* model = read_ident(ptr);
@@ -147,12 +204,21 @@ void load_scene(const char* file, Scene* scene)
             actor_ctx.scale_x = 1;
             actor_ctx.scale_y = 1;
             actor_ctx.scale_z = 1;
+            for (u32 i = 0; i < model_count; ++i) {
+                if (strcmp(model_names[i], model) == 0) {
+                    actor_ctx.model = models[i];
+                    break;
+                }
+            }
+            if (actor_ctx.model == NULL) {
+                printf("Unknown model: %s\n", model);
+            }
         } else if (prefix("PATH", ptr)) {
             skip_whitespaces(ptr);
             char* path = read_ident(ptr);
             next_line(ptr);
             if (ctx_type == MODEL) {
-                // TODO: load model here
+                load_model(path, &model_ctx);
             }
         } else if (prefix("POSITION", ptr)) {
             skip_whitespaces(ptr);
@@ -200,6 +266,12 @@ void load_scene(const char* file, Scene* scene)
             reached_end = true;
         }
     }
-    flush_ctx(ctx_type, actor_ctx, scene);
-    asset_arena.end_scope();
+    flush_ctx(ctx_type, 
+              actor_ctx, 
+              model_ctx,
+              scene, 
+              model_names, 
+              models, 
+              &model_count);
+    tmp_arena.end_scope();
 }

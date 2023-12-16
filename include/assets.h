@@ -18,8 +18,10 @@ struct Model
 {
     u32 start_index;
     u32 index_count;
+    u32 vertex_offset;
 };
 
+// This is so utterly fucking dogshit why did i do this why why why
 struct ModelBuffer
 {
     Vertex** vtx_queue;
@@ -29,9 +31,9 @@ struct ModelBuffer
     u32 staged_models;
 
     u32 index_counter;
+    u32 vertex_counter;
 
     Model* stage(Vertex* vtx, u32 vtx_count, u32* indices, u32 index_count);
-    void write_to_gpu();
     void clear();
     void init();
 };

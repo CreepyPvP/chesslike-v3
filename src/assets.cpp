@@ -19,31 +19,29 @@ Model* ModelBuffer::stage(Vertex* vtx,
     Model model;
     model.start_index = index_counter;
     model.index_count = index_count;
-    Model* ptr = (Model*) assert_arena.alloc(sizeof(Model));
+    model.vertex_offset = vertex_counter;
+    Model* ptr = (Model*) asset_arena.alloc(sizeof(Model));
     *ptr = model;
+
+    index_counter += index_count;
+    vertex_counter += vtx_count;
+
     return ptr;
-}
-
-// TODO: create vertex and index buffer, memcpy data to it
-void ModelBuffer::write_to_gpu()
-{
-
 }
 
 void ModelBuffer::clear()
 {
     staged_models = 0;
     index_counter = 0;
+    vertex_counter = 0;
 }
 
 void ModelBuffer::init()
 {
-    vtx_queue = (Vertex**) 
-        asset_arena.alloc(sizeof(Vertex*) * MODEL_BUFFER_MAX_MODELS);
-    index_queue = (u32**) 
-        asset_arena.alloc(sizeof(u32*) * MODEL_BUFFER_MAX_MODELS);
-    index_queue_len = (u32*) 
-        asset_arena.alloc(sizeof(u32) * MODEL_BUFFER_MAX_MODELS);
+    vtx_queue = (Vertex**) asset_arena.alloc(sizeof(Vertex*) * MODEL_BUFFER_MAX_MODELS);
+    vtx_queue_len = (u32*) asset_arena.alloc(sizeof(u32) * MODEL_BUFFER_MAX_MODELS);
+    index_queue = (u32**) asset_arena.alloc(sizeof(u32*) * MODEL_BUFFER_MAX_MODELS);
+    index_queue_len = (u32*) asset_arena.alloc(sizeof(u32) * MODEL_BUFFER_MAX_MODELS);
     clear();
 }
 
