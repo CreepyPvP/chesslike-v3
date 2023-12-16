@@ -1,3 +1,5 @@
+#include "include/defines.h"
+
 #include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -10,20 +12,17 @@
 #include <stdbool.h>
 #include <vector>
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
-#include "include/defines.h"
 #include "include/utils.h"
 #include "include/assets.h"
 #include "include/arena.h"
 #include "include/scene.h"
 #include "include/loading.h"
+#include "include/camera.h"
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
@@ -129,9 +128,25 @@ VkMappedMemoryRange ranges[UNIFORM_BUF_SIZE];
 
 Scene scene;
 
+float last_mouse_pos_x;
+float last_mouse_pos_y;
+
+
 static void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
     frame_buffer_resized = true;
+}
+
+static void mouse_callback(GLFWwindow* window, double pos_x, double pos_y) 
+{
+    float x_offset = pos_x - last_mouse_pos_x;
+    float y_offset = pos_y - last_mouse_pos_y;
+    last_mouse_pos_x = pos_x;
+    last_mouse_pos_y = pos_y;
+    const float sensitivity = 0.1f;
+    x_offset *= sensitivity;
+    y_offset *= sensitivity;
+    camera.process_mouse_input(x_offset, y_offset);
 }
 
 
@@ -168,6 +183,9 @@ void init_window()
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     window = glfwCreateWindow(width, height, "Vulkan", NULL, NULL);
     glfwSetFramebufferSizeCallback(window, resize_callback);
+
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetCursorPosCallback(window, mouse_callback);
 }
 
 u8 check_validation_layer_support() 
@@ -1543,8 +1561,8 @@ void update_uniform_buffer(u32 actor_index, Actor* actor)
     ubo.model = glm::scale(ubo.model, glm::vec3(actor->scale_x, 
                                                 actor->scale_y, 
                                                 actor->scale_z));
-    glm::mat4 view = glm::lookAt(glm::vec3(0.0, 40.0, 10.0), 
-                                 glm::vec3(0.0, 0.0, 0.0), 
+    glm::mat4 view = glm::lookAt(camera.pos, 
+                                 camera.pos + camera.front, 
                                  glm::vec3(0.0, 0.0, 1.0));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
                                       (float) swap_chain_extent.width / 
@@ -1701,14 +1719,24 @@ void draw_frame()
 void main_loop() 
 {
     current_frame = 0;
+
+    float time_last_frame = glfwGetTime();
+    float delta = 0;
+
     while (!glfwWindowShouldClose(window)) {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
             glfwSetWindowShouldClose(window, true);
         }
 
-        glfwPollEvents();
+        float current_time = glfwGetTime();
+        delta = current_time - time_last_frame;
+        time_last_frame = current_time;
+
+        camera.process_key_input(window, delta);
+
         draw_frame();
         current_frame = (current_frame + 1) % max_frames_in_flight;
+        glfwPollEvents();
     }
     vkDeviceWaitIdle(device);
 }
@@ -1761,6 +1789,7 @@ i32 main()
     init_window();
     model_buffer.init();
     scene.init();
+    camera.init();
     load_scene("assets/scene.sce", &scene);
     init_vulkan();
     main_loop();
