@@ -70,6 +70,7 @@ struct SwapChainSupportDetails
 struct GlobalUniform
 {
     glm::mat4 proj_view;
+    glm::vec3 camera_pos;
 };
 
 struct MaterialUniform
@@ -128,8 +129,9 @@ VkImage color_image;
 VkDeviceMemory color_image_memory;
 VkImageView color_image_view;
 
-// 0 => material uniform, 1 => object uniform
-u32 dynamic_align[2];
+// 0 => global, 1 => material, 2 => object
+u32 dynamic_align[3];
+u32 non_coherent_atom_size;
 u32 range_count = 0;
 u32 object_offset;
 u32 material_offset;
@@ -633,19 +635,19 @@ void create_descriptor_set_layouts()
     global_binding.binding = 0;
     global_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     global_binding.descriptorCount = 1;
-    global_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    global_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     global_binding.pImmutableSamplers = NULL;
     VkDescriptorSetLayoutBinding material_binding{};
     material_binding.binding = 0;
     material_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     material_binding.descriptorCount = 1;
-    material_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    material_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     material_binding.pImmutableSamplers = NULL;
     VkDescriptorSetLayoutBinding object_binding{};
     object_binding.binding = 0;
     object_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     object_binding.descriptorCount = 1;
-    object_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    object_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     object_binding.pImmutableSamplers = NULL;
 
     VkDescriptorSetLayoutBinding bindings[] = {
@@ -1115,16 +1117,19 @@ void create_uniform_buffer()
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
     u32 min_align = properties.limits.minUniformBufferOffsetAlignment;
+    non_coherent_atom_size = properties.limits.nonCoherentAtomSize;
 
     u32 size;
-    size = sizeof(MaterialUniform);
+    size = sizeof(GlobalUniform);
     dynamic_align[0] = get_align(size, min_align);
-    size = sizeof(ObjectUniform);
+    size = sizeof(MaterialUniform);
     dynamic_align[1] = get_align(size, min_align);
+    size = sizeof(ObjectUniform);
+    dynamic_align[2] = get_align(size, min_align);
 
-    material_offset = sizeof(GlobalUniform);
-    object_offset = material_offset + dynamic_align[0] * UNIFORM_BUF_MATERIAL;
-    VkDeviceSize buffer_size = object_offset + dynamic_align[1] * UNIFORM_BUF_OBJECT;
+    material_offset = dynamic_align[0];
+    object_offset = material_offset + dynamic_align[1] * UNIFORM_BUF_MATERIAL;
+    VkDeviceSize buffer_size = object_offset + dynamic_align[2] * UNIFORM_BUF_OBJECT;
     uniform_buffers.resize(max_frames_in_flight);
     uniform_buffers_memory.resize(max_frames_in_flight);
     uniform_buffers_mapped.resize(max_frames_in_flight);
@@ -1640,7 +1645,7 @@ void update_uniform_memory(u8* memory, u32 offset, u32 size)
     range.pNext = NULL;
     range.memory = uniform_buffers_memory[current_frame];
     range.offset = offset;
-    range.size = size;
+    range.size = get_align(size, non_coherent_atom_size);
     ranges[range_count] = range;
     ++range_count;
 }
@@ -1651,9 +1656,6 @@ void update_global_uniform()
     glm::mat4 view = glm::lookAt(camera.pos, 
                                  camera.pos + camera.front, 
                                  glm::vec3(0.0, 0.0, 1.0));
-    // glm::mat4 view = glm::lookAt(glm::vec3(0, 40, 0), 
-    //                              glm::vec3(0, 0, 0), 
-    //                              glm::vec3(0.0, 0.0, 1.0));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
                                       (float) swap_chain_extent.width / 
                                       (float) swap_chain_extent.height, 
@@ -1661,6 +1663,7 @@ void update_global_uniform()
                                       1000.0f);
     proj[1][1] *= -1;
     ubo.proj_view = proj * view;
+    ubo.camera_pos = camera.pos;
     update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform));
 }
 
@@ -1683,7 +1686,7 @@ void update_object_uniform(u32 actor_index, Actor* actor)
     ubo.model = glm::scale(ubo.model, glm::vec3(actor->scale_x, 
                                                 actor->scale_y, 
                                                 actor->scale_z));
-    u32 offset = object_offset + dynamic_align[1] * actor_index;
+    u32 offset = object_offset + dynamic_align[2] * actor_index;
     update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform));
 }
 
@@ -1732,7 +1735,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                             0, NULL);
     for (u32 i = 0; i < scene.actor_count; ++i) {
         u32 dynamic_offsets[] = {
-            0, i * dynamic_align[1]
+            0, i * dynamic_align[2]
         };
         Model model = *(scene.actors[i].model);
         vkCmdBindDescriptorSets(buffer, 

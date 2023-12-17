@@ -3,6 +3,12 @@
 #define PI 3.14
 #define NDF_GGX
 
+layout(binding = 0, set = 0) uniform GlobalUniform 
+{
+    mat4 proj_view;
+    vec3 camera_pos;
+} global;
+
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_pos;
 
@@ -91,9 +97,8 @@ vec3 brdf(vec3 l, vec3 v, vec3 n)
 
 void main() 
 {
-    vec3 camera_pos = vec3(0, 40, 10);
     vec3 n = normalize(in_normal);
-    vec3 v = normalize(camera_pos - in_pos);
+    vec3 v = normalize(global.camera_pos - in_pos);
 
     out_color = vec4(0, 0, 0, 1);
     for (int i = 0; i < light_count; ++i) {

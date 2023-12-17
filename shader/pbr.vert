@@ -3,6 +3,7 @@
 layout(binding = 0, set = 0) uniform GlobalUniform 
 {
     mat4 proj_view;
+    vec3 camera_pos;
 } global;
 
 layout(binding = 0, set = 1) uniform MaterialUniform 
