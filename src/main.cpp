@@ -75,7 +75,10 @@ struct GlobalUniform
 
 struct MaterialUniform
 {
-    float rougness;
+    float roughness;
+    float smoothness;
+    glm::vec3 specular;
+    glm::vec3 diffuse;
 };
 
 struct ObjectUniform
@@ -1637,7 +1640,7 @@ void flush_uniform_buffer()
     range_count = 0;
 }
 
-void update_uniform_memory(u8* memory, u32 offset, u32 size)
+void update_uniform_memory(u8* memory, u32 offset, u32 size, u32 current_frame)
 {
     memcpy((u8*) uniform_buffers_mapped[current_frame] + offset, memory, size);
     VkMappedMemoryRange range{};
@@ -1664,7 +1667,7 @@ void update_global_uniform()
     proj[1][1] *= -1;
     ubo.proj_view = proj * view;
     ubo.camera_pos = camera.pos;
-    update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform));
+    update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
 }
 
 void update_object_uniform(u32 actor_index, Actor* actor) 
@@ -1687,7 +1690,33 @@ void update_object_uniform(u32 actor_index, Actor* actor)
                                                 actor->scale_y, 
                                                 actor->scale_z));
     u32 offset = object_offset + dynamic_align[2] * actor_index;
-    update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform));
+    update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform), current_frame);
+}
+
+void init_materials()
+{
+    MaterialUniform water;
+    water.smoothness = 1.0;
+    water.roughness = 0.10;
+    water.specular = glm::vec3(0.02, 0.02, 0.02);
+    water.diffuse = glm::vec3(0.07, 0.07, 0.3);
+
+    MaterialUniform gold;
+    gold.smoothness = 0.1;
+    gold.roughness = 0.20;
+    gold.specular = glm::vec3(1.00, 0.78, 0.34);
+    gold.diffuse = glm::vec3(0.0, 0.0, 0.0);
+
+    for (u32 i = 0; i < max_frames_in_flight; ++i) {
+        update_uniform_memory((u8*) &water, 
+                              material_offset, 
+                              sizeof(MaterialUniform),
+                              i);
+        update_uniform_memory((u8*) &gold, 
+                              material_offset + dynamic_align[1], 
+                              sizeof(MaterialUniform),
+                              i);
+    }
 }
 
 void record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
@@ -1735,7 +1764,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                             0, NULL);
     for (u32 i = 0; i < scene.actor_count; ++i) {
         u32 dynamic_offsets[] = {
-            0, i * dynamic_align[2]
+            scene.actors[i].material * dynamic_align[1], i * dynamic_align[2]
         };
         Model model = *(scene.actors[i].model);
         vkCmdBindDescriptorSets(buffer, 
@@ -1907,6 +1936,7 @@ i32 main()
     camera.init();
     load_scene("assets/scene.sce", &scene);
     init_vulkan();
+    init_materials();
     main_loop();
     cleanup();
 }

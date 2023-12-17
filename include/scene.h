@@ -14,6 +14,7 @@ struct Actor
     float scale_x;
     float scale_y;
     float scale_z;
+    u32 material;
 
     Model* model;
 };

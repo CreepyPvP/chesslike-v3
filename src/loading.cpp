@@ -100,6 +100,15 @@ float read_float(const char** ptr)
     return result;
 }
 
+i32 read_int(const char** ptr) 
+{
+    i32 result = atoi(*ptr);
+    while (**ptr != 0 && **ptr != ' ' && **ptr != '\n') {
+        (*ptr)++;
+    }
+    return result;
+}
+
 void flush_ctx(CtxType type, 
                Actor actor_ctx, 
                ModelParams model_ctx, 
@@ -262,7 +271,16 @@ void load_scene(const char* file, Scene* scene)
                 actor_ctx.scale_z = z;
             }
             next_line(ptr);
-        } else if (**ptr == 0) {
+        } else if (prefix("MATERIAL", ptr)) {
+            skip_whitespaces(ptr);
+            if (ctx_type == ACTOR) {
+                i32 material = read_int(ptr);
+                if (material >= 0) {
+                    actor_ctx.material = material;
+                }
+            }
+            next_line(ptr);
+        }else if (**ptr == 0) {
             reached_end = true;
         }
     }
