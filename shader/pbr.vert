@@ -23,7 +23,6 @@ layout(location = 1) in vec3 in_normal;
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out vec3 out_pos;
 layout(location = 2) out vec2 out_prev_screen_pos;
-layout(location = 3) out vec2 out_screen_pos;
 
 void main() 
 {
@@ -35,5 +34,4 @@ void main()
     // taa stuff...
     vec4 prev_pos = object.prev_mvp * vec4(in_position, 1.0);
     out_prev_screen_pos = ((vec2(prev_pos.x, prev_pos.y) / prev_pos.w) + 1) / 2;
-    out_screen_pos = ((vec2(gl_Position.x, gl_Position.y) / gl_Position.w) + 1) / 2;
 }

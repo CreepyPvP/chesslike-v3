@@ -20,7 +20,6 @@ layout(binding = 0, set = 1) uniform MaterialUniform
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_pos;
 layout(location = 2) in vec2 in_prev_screen_pos;
-layout(location = 3) in vec2 in_screen_pos;
 
 layout(location = 0) out vec4 out_color;
 
@@ -113,5 +112,5 @@ void main()
     //     out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
     // }
     // out_color.rgb *= PI;
-    out_color = vec4((in_screen_pos - in_prev_screen_pos) * 100, 0, 1);
+    out_color = vec4(in_prev_screen_pos, 0, 1);
 }
