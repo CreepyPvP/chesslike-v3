@@ -27,7 +27,9 @@
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
 
-#define UNIFORM_BUF_SIZE 10
+#define UNIFORM_BUF_GLOBAL 1
+#define UNIFORM_BUF_MATERIAL 5
+#define UNIFORM_BUF_OBJECT 10
 #define AA_SAMPLE_SHADING
 
 const u32 width = 1280;
@@ -65,10 +67,19 @@ struct SwapChainSupportDetails
     u32 present_count;
 };
 
-struct UniformBufferObject
+struct GlobalUniform
+{
+    glm::mat4 proj_view;
+};
+
+struct MaterialUniform
+{
+    float rougness;
+};
+
+struct ObjectUniform
 {
     glm::mat4 model;
-    glm::mat4 proj_view;
 };
 
 Vertex* vertices;
@@ -90,7 +101,6 @@ VkPhysicalDevice physical_device;
 VkQueue graphics_queue;
 VkQueue present_queue;
 VkRenderPass render_pass;
-VkDescriptorSetLayout descriptor_set_layout;
 VkPipelineLayout pipeline_layout;
 VkPipeline graphics_pipeline;
 std::vector<VkFramebuffer> swap_chain_framebuffers;
@@ -104,11 +114,7 @@ VkBuffer vertex_buffer;
 VkDeviceMemory vertex_buffer_memory;
 VkBuffer index_buffer;
 VkDeviceMemory index_buffer_memory;
-std::vector<VkBuffer> uniform_buffers;
-std::vector<VkDeviceMemory> uniform_buffers_memory;
-std::vector<void*> uniform_buffers_mapped;
 VkDescriptorPool descriptor_pool;
-std::vector<VkDescriptorSet> descriptor_sets;
 u32 current_frame;
 VkImage depth_image;
 VkDeviceMemory depth_image_memory;
@@ -122,9 +128,17 @@ VkImage color_image;
 VkDeviceMemory color_image_memory;
 VkImageView color_image_view;
 
-u32 dynamic_align;
+// 0 => material uniform, 1 => object uniform
+u32 dynamic_align[2];
 u32 range_count = 0;
-VkMappedMemoryRange ranges[UNIFORM_BUF_SIZE];
+u32 object_offset;
+u32 material_offset;
+VkMappedMemoryRange ranges[UNIFORM_BUF_OBJECT + UNIFORM_BUF_MATERIAL + 1];
+VkDescriptorSet descriptor_sets[max_frames_in_flight * 3];
+VkDescriptorSetLayout descriptor_set_layouts[3];
+std::vector<VkBuffer> uniform_buffers;
+std::vector<VkDeviceMemory> uniform_buffers_memory;
+std::vector<void*> uniform_buffers_mapped;
 
 Scene scene;
 
@@ -613,24 +627,44 @@ void create_shader_module(const char* code, u32 len, VkShaderModule* module)
     }
 }
 
-void create_descriptor_set_layout() 
+void create_descriptor_set_layouts() 
 {
-    VkDescriptorSetLayoutBinding layout_binding{};
-    layout_binding.binding = 0;
-    layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-    layout_binding.descriptorCount = 1;
-    layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    layout_binding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutBinding global_binding{};
+    global_binding.binding = 0;
+    global_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    global_binding.descriptorCount = 1;
+    global_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    global_binding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutBinding material_binding{};
+    material_binding.binding = 0;
+    material_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    material_binding.descriptorCount = 1;
+    material_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    material_binding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutBinding object_binding{};
+    object_binding.binding = 0;
+    object_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    object_binding.descriptorCount = 1;
+    object_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    object_binding.pImmutableSamplers = NULL;
+
+    VkDescriptorSetLayoutBinding bindings[] = {
+        global_binding,
+        material_binding,
+        object_binding
+    };
     VkDescriptorSetLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_info.bindingCount = 1;
-    layout_info.pBindings = &layout_binding;
-    if (vkCreateDescriptorSetLayout(device, 
-                                    &layout_info, 
-                                    NULL, 
-                                    &descriptor_set_layout) != VK_SUCCESS) {
-        printf("Failed to create descriptor set layout\n");
-        exit(1);
+    for (u32 i = 0; i < 3; ++i) {
+        layout_info.pBindings = bindings + i;
+        if (vkCreateDescriptorSetLayout(device, 
+                                        &layout_info, 
+                                        NULL, 
+                                        descriptor_set_layouts + i) != VK_SUCCESS) {
+            printf("Failed to create descriptor set layout\n");
+            exit(1);
+        }
     }
 }
 
@@ -734,8 +768,8 @@ void create_graphics_pipeline()
     color_blending.pAttachments = &color_blend_attachment;
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 1;
-    pipeline_layout_info.pSetLayouts = &descriptor_set_layout;
+    pipeline_layout_info.setLayoutCount = 3;
+    pipeline_layout_info.pSetLayouts = descriptor_set_layouts;
     if (vkCreatePipelineLayout(device, &pipeline_layout_info, NULL,
                                &pipeline_layout) != VK_SUCCESS) {
         printf("Failed to create pipeline layout\n");
@@ -1068,18 +1102,29 @@ void create_index_buffer()
     vkFreeMemory(device, staging_buffer_memory, NULL);
 }
 
+u32 get_align(u32 size, u32 min_align)
+{
+    if (min_align > 0) {
+        return (size + min_align - 1) & ~(min_align - 1);
+    }
+    size;
+}
+
 void create_uniform_buffer() 
 {
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
-    u32 min_ubo_align = properties.limits.minUniformBufferOffsetAlignment;
-    dynamic_align = sizeof(UniformBufferObject);
-    if (min_ubo_align > 0) {
-        dynamic_align = (dynamic_align + min_ubo_align - 1) & 
-            ~(min_ubo_align - 1);
-    }
+    u32 min_align = properties.limits.minUniformBufferOffsetAlignment;
 
-    VkDeviceSize buffer_size = dynamic_align * UNIFORM_BUF_SIZE;
+    u32 size;
+    size = sizeof(MaterialUniform);
+    dynamic_align[0] = get_align(size, min_align);
+    size = sizeof(ObjectUniform);
+    dynamic_align[1] = get_align(size, min_align);
+
+    material_offset = sizeof(GlobalUniform);
+    object_offset = material_offset + dynamic_align[0] * UNIFORM_BUF_MATERIAL;
+    VkDeviceSize buffer_size = object_offset + dynamic_align[1] * UNIFORM_BUF_OBJECT;
     uniform_buffers.resize(max_frames_in_flight);
     uniform_buffers_memory.resize(max_frames_in_flight);
     uniform_buffers_mapped.resize(max_frames_in_flight);
@@ -1101,13 +1146,20 @@ void create_uniform_buffer()
 void create_descriptor_pool() 
 {
     VkDescriptorPoolSize pool_size{};
-    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     pool_size.descriptorCount = (u32) max_frames_in_flight;
+    VkDescriptorPoolSize pool_size_dynamic{};
+    pool_size_dynamic.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+    pool_size_dynamic.descriptorCount = (u32) max_frames_in_flight * 2;
+    VkDescriptorPoolSize sizes[2] = {
+        pool_size,
+        pool_size_dynamic,
+    };
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = 1;
-    pool_info.pPoolSizes = &pool_size;
-    pool_info.maxSets = (u32) max_frames_in_flight;
+    pool_info.poolSizeCount = 2;
+    pool_info.pPoolSizes = sizes;
+    pool_info.maxSets = (u32) max_frames_in_flight * 3;
     if (vkCreateDescriptorPool(device, 
                                &pool_info, 
                                NULL, 
@@ -1119,28 +1171,66 @@ void create_descriptor_pool()
 
 void create_descriptor_sets() 
 {
-    std::vector<VkDescriptorSetLayout> layouts(max_frames_in_flight, 
-                                               descriptor_set_layout);
+    VkDescriptorSetLayout layouts[] = {
+        descriptor_set_layouts[0],
+        descriptor_set_layouts[1],
+        descriptor_set_layouts[2],
+        descriptor_set_layouts[0],
+        descriptor_set_layouts[1],
+        descriptor_set_layouts[2],
+    };
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = descriptor_pool;
-    alloc_info.descriptorSetCount = (u32) max_frames_in_flight;
-    alloc_info.pSetLayouts = layouts.data();
-    descriptor_sets.resize(max_frames_in_flight);
-    if (vkAllocateDescriptorSets(device, 
-                                 &alloc_info, 
-                                 descriptor_sets.data()) != VK_SUCCESS) {
+    alloc_info.descriptorSetCount = (u32) max_frames_in_flight * 3;
+    alloc_info.pSetLayouts = layouts;
+    if (vkAllocateDescriptorSets(device, &alloc_info, 
+                                 descriptor_sets) != VK_SUCCESS) {
         printf("Failed to allocate descriptor sets\n");
         exit(1);
     }
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
+        // TODO: clean this up
         VkDescriptorBufferInfo buffer_info{};
         buffer_info.buffer = uniform_buffers[i];
         buffer_info.offset = 0;
-        buffer_info.range = sizeof(UniformBufferObject);
+        buffer_info.range = sizeof(GlobalUniform);
         VkWriteDescriptorSet descriptor_write{};
         descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_write.dstSet = descriptor_sets[i];
+        descriptor_write.dstSet = descriptor_sets[0 + i * 3];
+        descriptor_write.dstBinding = 0;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &buffer_info;
+        descriptor_write.pImageInfo = NULL;
+        descriptor_write.pTexelBufferView = NULL;
+        vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
+
+        buffer_info = {};
+        buffer_info.buffer = uniform_buffers[i];
+        buffer_info.offset = material_offset;
+        buffer_info.range = sizeof(MaterialUniform);
+        descriptor_write = {};
+        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write.dstSet = descriptor_sets[1 + i * 3];
+        descriptor_write.dstBinding = 0;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = 
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &buffer_info;
+        descriptor_write.pImageInfo = NULL;
+        descriptor_write.pTexelBufferView = NULL;
+        vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
+
+        buffer_info = {};
+        buffer_info.buffer = uniform_buffers[i];
+        buffer_info.offset = object_offset;
+        buffer_info.range = sizeof(ObjectUniform);
+        descriptor_write = {};
+        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write.dstSet = descriptor_sets[2 + i * 3];
         descriptor_write.dstBinding = 0;
         descriptor_write.dstArrayElement = 0;
         descriptor_write.descriptorType = 
@@ -1518,7 +1608,7 @@ void init_vulkan()
     create_swap_chain();
     create_image_views();
     create_render_pass();
-    create_descriptor_set_layout();
+    create_descriptor_set_layouts();
     create_graphics_pipeline();
     create_command_pool();
     create_color_resources();
@@ -1542,10 +1632,39 @@ void flush_uniform_buffer()
     range_count = 0;
 }
 
-void update_uniform_buffer(u32 actor_index, Actor* actor) 
+void update_uniform_memory(u8* memory, u32 offset, u32 size)
+{
+    memcpy((u8*) uniform_buffers_mapped[current_frame], memory, size);
+    VkMappedMemoryRange range{};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.pNext = NULL;
+    range.memory = uniform_buffers_memory[current_frame];
+    range.offset = offset;
+    range.size = size;
+    ranges[range_count] = range;
+    ++range_count;
+}
+
+void update_global_uniform()
+{
+    GlobalUniform ubo;
+    glm::mat4 view = glm::lookAt(camera.pos, 
+                                 camera.pos + camera.front, 
+                                 glm::vec3(0.0, 0.0, 1.0));
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
+                                      (float) swap_chain_extent.width / 
+                                      (float) swap_chain_extent.height, 
+                                      0.1f, 
+                                      1000.0f);
+    proj[1][1] *= -1;
+    ubo.proj_view = proj * view;
+    update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform));
+}
+
+void update_object_uniform(u32 actor_index, Actor* actor) 
 {
     float time = glfwGetTime();
-    UniformBufferObject ubo;
+    ObjectUniform ubo;
     ubo.model = glm::mat4(1.0);
     ubo.model = glm::translate(ubo.model, 
                                glm::vec3(actor->x, actor->y, actor->z));
@@ -1561,29 +1680,8 @@ void update_uniform_buffer(u32 actor_index, Actor* actor)
     ubo.model = glm::scale(ubo.model, glm::vec3(actor->scale_x, 
                                                 actor->scale_y, 
                                                 actor->scale_z));
-    glm::mat4 view = glm::lookAt(camera.pos, 
-                                 camera.pos + camera.front, 
-                                 glm::vec3(0.0, 0.0, 1.0));
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
-                                      (float) swap_chain_extent.width / 
-                                      (float) swap_chain_extent.height, 
-                                      0.1f, 
-                                      1000.0f);
-    proj[1][1] *= -1;
-    ubo.proj_view = proj * view;
-    memcpy((char*) uniform_buffers_mapped[current_frame] + 
-                dynamic_align * actor_index, 
-           &ubo, 
-           sizeof(UniformBufferObject));
-
-    VkMappedMemoryRange range{};
-    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    range.pNext = NULL;
-    range.memory = uniform_buffers_memory[current_frame];
-    range.offset = dynamic_align * actor_index;
-    range.size = sizeof(UniformBufferObject);
-    ranges[range_count] = range;
-    ++range_count;
+    u32 offset = object_offset + dynamic_align[1] * actor_index;
+    update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform));
 }
 
 void record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
@@ -1618,19 +1716,28 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
     vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    update_global_uniform();
     for (u32 i = 0; i < scene.actor_count; ++i) {
-        update_uniform_buffer(i, scene.actors + i);
+        update_object_uniform(i, scene.actors + i);
     }
     flush_uniform_buffer();
+    vkCmdBindDescriptorSets(buffer, 
+                            VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                            pipeline_layout,
+                            0,
+                            1, descriptor_sets + 0 + current_frame * 3,
+                            0, NULL);
     for (u32 i = 0; i < scene.actor_count; ++i) {
-        u32 dynamic_offset = i * dynamic_align;
+        u32 dynamic_offsets[] = {
+            0, i * dynamic_align[1]
+        };
         Model model = *(scene.actors[i].model);
         vkCmdBindDescriptorSets(buffer, 
                                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
                                 pipeline_layout,
-                                0,
-                                1, &descriptor_sets[current_frame],
-                                1, &dynamic_offset);
+                                1,
+                                2, descriptor_sets + 1 + current_frame * 3,
+                                2, dynamic_offsets);
         vkCmdDrawIndexed(buffer, 
                          model.index_count, 
                          1, 
@@ -1753,7 +1860,9 @@ void cleanup()
         vkFreeMemory(device, uniform_buffers_memory[i], NULL);
     }
     vkDestroyDescriptorPool(device, descriptor_pool, NULL);
-    vkDestroyDescriptorSetLayout(device, descriptor_set_layout, NULL);
+    vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[0], NULL);
+    vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[1], NULL);
+    vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[2], NULL);
     vkDestroyBuffer(device, vertex_buffer, NULL);
     vkFreeMemory(device, vertex_buffer_memory, NULL);
     vkDestroyBuffer(device, index_buffer, NULL);
