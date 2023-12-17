@@ -1634,7 +1634,7 @@ void flush_uniform_buffer()
 
 void update_uniform_memory(u8* memory, u32 offset, u32 size)
 {
-    memcpy((u8*) uniform_buffers_mapped[current_frame], memory, size);
+    memcpy((u8*) uniform_buffers_mapped[current_frame] + offset, memory, size);
     VkMappedMemoryRange range{};
     range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
     range.pNext = NULL;
@@ -1651,6 +1651,9 @@ void update_global_uniform()
     glm::mat4 view = glm::lookAt(camera.pos, 
                                  camera.pos + camera.front, 
                                  glm::vec3(0.0, 0.0, 1.0));
+    // glm::mat4 view = glm::lookAt(glm::vec3(0, 40, 0), 
+    //                              glm::vec3(0, 0, 0), 
+    //                              glm::vec3(0.0, 0.0, 1.0));
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
                                       (float) swap_chain_extent.width / 
                                       (float) swap_chain_extent.height, 
