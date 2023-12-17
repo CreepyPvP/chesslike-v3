@@ -19,6 +19,8 @@ layout(binding = 0, set = 1) uniform MaterialUniform
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_pos;
+layout(location = 2) in vec2 in_prev_screen_pos;
+layout(location = 3) in vec2 in_screen_pos;
 
 layout(location = 0) out vec4 out_color;
 
@@ -100,15 +102,16 @@ vec3 brdf(vec3 l, vec3 v, vec3 n)
 
 void main() 
 {
-    vec3 n = normalize(in_normal);
-    vec3 v = normalize(global.camera_pos - in_pos);
-
-    out_color = vec4(0, 0, 0, 1);
-    for (int i = 0; i < light_count; ++i) {
-        vec3 l = light_dir[i];
-        vec3 c_light = light_colors[i];
-
-        out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
-    }
-    out_color.rgb *= PI;
+    // vec3 n = normalize(in_normal);
+    // vec3 v = normalize(global.camera_pos - in_pos);
+    //
+    // out_color = vec4(0, 0, 0, 1);
+    // for (int i = 0; i < light_count; ++i) {
+    //     vec3 l = light_dir[i];
+    //     vec3 c_light = light_colors[i];
+    //
+    //     out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
+    // }
+    // out_color.rgb *= PI;
+    out_color = vec4((in_screen_pos - in_prev_screen_pos) * 100, 0, 1);
 }

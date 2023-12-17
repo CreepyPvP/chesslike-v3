@@ -3,6 +3,8 @@
 #include "include/defines.h"
 #include "include/assets.h"
 
+#include <glm/mat4x4.hpp>
+
 struct Actor
 {
     float x;
@@ -15,6 +17,8 @@ struct Actor
     float scale_y;
     float scale_z;
     u32 material;
+
+    glm::mat4 prev_mvp;
 
     Model* model;
 };

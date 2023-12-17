@@ -84,6 +84,7 @@ struct MaterialUniform
 struct ObjectUniform
 {
     glm::mat4 model;
+    glm::mat4 prev_mvp;
 };
 
 Vertex* vertices;
@@ -144,6 +145,9 @@ VkDescriptorSetLayout descriptor_set_layouts[3];
 std::vector<VkBuffer> uniform_buffers;
 std::vector<VkDeviceMemory> uniform_buffers_memory;
 std::vector<void*> uniform_buffers_mapped;
+
+// taa stuff...
+glm::mat4 proj_view;
 
 Scene scene;
 
@@ -1668,6 +1672,8 @@ void update_global_uniform()
     ubo.proj_view = proj * view;
     ubo.camera_pos = camera.pos;
     update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
+
+    proj_view = ubo.proj_view;
 }
 
 void update_object_uniform(u32 actor_index, Actor* actor) 
@@ -1689,8 +1695,11 @@ void update_object_uniform(u32 actor_index, Actor* actor)
     ubo.model = glm::scale(ubo.model, glm::vec3(actor->scale_x, 
                                                 actor->scale_y, 
                                                 actor->scale_z));
+    ubo.prev_mvp = actor->prev_mvp;
     u32 offset = object_offset + dynamic_align[2] * actor_index;
     update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform), current_frame);
+
+    actor->prev_mvp = proj_view * ubo.model;
 }
 
 void init_materials()
