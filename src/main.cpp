@@ -1270,6 +1270,8 @@ void cleanup_swapchain()
         vkDestroyImageView(device, image_view, NULL);
     }
     vkDestroySwapchainKHR(device, swap_chain, NULL);
+    vkDestroyPipeline(device, graphics_pipeline, NULL);
+    vkDestroyPipelineLayout(device, pipeline_layout, NULL);
 }
 
 void create_depth_resources();
@@ -1292,6 +1294,7 @@ void recreate_swap_chain()
     create_color_resources();
     create_depth_resources();
     create_framebuffers();
+    create_graphics_pipeline();
 }
 
 void create_command_buffers() 
@@ -1917,8 +1920,6 @@ void cleanup()
         vkDestroyFence(device, in_flight_fences[i], NULL);
     }
     vkDestroyCommandPool(device, command_pool, NULL);
-    vkDestroyPipeline(device, graphics_pipeline, NULL);
-    vkDestroyPipelineLayout(device, pipeline_layout, NULL);
     vkDestroyRenderPass(device, render_pass, NULL);
     vkDestroyDevice(device, NULL);
     vkDestroySurfaceKHR(instance, surface, NULL);
