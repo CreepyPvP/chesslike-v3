@@ -96,7 +96,6 @@ VkSurfaceKHR surface;
 VkSwapchainKHR swap_chain;
 std::vector<VkImage> swap_chain_images;
 std::vector<VkImageView> swap_chain_image_views;
-VkImageView* image_views;
 u32 image_count;
 VkFormat swap_chain_image_format;
 VkExtent2D swap_chain_extent;
@@ -140,6 +139,12 @@ VkDescriptorSetLayout descriptor_set_layouts[3];
 std::vector<VkBuffer> uniform_buffers;
 std::vector<VkDeviceMemory> uniform_buffers_memory;
 std::vector<void*> uniform_buffers_mapped;
+
+// render targets
+VkImage render_images[max_frames_in_flight];
+VkImageView render_image_views[max_frames_in_flight];
+VkDeviceMemory render_image_memory[max_frames_in_flight];
+VkFormat render_image_format = VK_FORMAT_R8G8B8A8_UNORM;
 
 // taa stuff...
 glm::mat4 proj_view;
@@ -589,6 +594,86 @@ VkImageView create_image_view(VkImage image,
     return image_view;
 }
 
+u32 find_memory_type(u32 type_filter, VkMemoryPropertyFlags properties) 
+{
+    VkPhysicalDeviceMemoryProperties mem_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+    for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
+        if (type_filter & (1 << i) &&
+            (mem_properties.memoryTypes[i].propertyFlags & properties) ==
+            properties) {
+            return i;
+        }
+    }
+    printf("Failed to find suitable memory type\n");
+    exit(1);
+}
+
+void create_image(u32 width, 
+                  u32 height, 
+                  VkSampleCountFlagBits num_samples,
+                  VkFormat format, 
+                  VkImageTiling tiling,
+                  VkImageUsageFlags usage,
+                  VkMemoryPropertyFlags properties,
+                  VkImage* image,
+                  VkDeviceMemory* image_memory) 
+{
+    VkImageCreateInfo image_info{};
+    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_info.imageType = VK_IMAGE_TYPE_2D;
+    image_info.extent.width = width;
+    image_info.extent.height = height;
+    image_info.extent.depth = 1;
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.format = format;
+    image_info.tiling = tiling;
+    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_info.usage = usage;
+    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.samples = num_samples;
+    image_info.flags = 0;
+    if (vkCreateImage(device, 
+                      &image_info, 
+                      NULL, 
+                      image) != VK_SUCCESS) {
+        printf("Failed to create image\n");
+        exit(1);
+    }
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(device, *image, &mem_requirements);
+    VkMemoryAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = find_memory_type(
+        mem_requirements.memoryTypeBits,
+        properties);
+    if (vkAllocateMemory(device, 
+                         &alloc_info, 
+                         NULL, 
+                         image_memory) != VK_SUCCESS) {
+        printf("Failed to allocate image memory\n");
+        exit(3);
+    }
+    vkBindImageMemory(device, *image, *image_memory, 0);
+}
+
+void create_render_images()
+{
+    for (u32 i = 0; i < max_frames_in_flight; ++i) {
+        create_image(swap_chain_extent.width, 
+                     swap_chain_extent.height,
+                     VK_SAMPLE_COUNT_1_BIT,
+                     render_image_format,
+                     VK_IMAGE_TILING_OPTIMAL,
+                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                     render_images + i,
+                     render_image_memory + i);
+    }
+}
+
 void create_image_views() 
 {
     swap_chain_image_views.resize(swap_chain_images.size());
@@ -596,6 +681,11 @@ void create_image_views()
         swap_chain_image_views[i] = create_image_view(swap_chain_images[i], 
                                                     swap_chain_image_format,
                                                     VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+    for (u32 i = 0; i < max_frames_in_flight; ++i) {
+        render_image_views[i] = create_image_view(render_images[i],
+                                                  render_image_format,
+                                                  VK_IMAGE_ASPECT_COLOR_BIT);
     }
 }
 
@@ -978,21 +1068,6 @@ void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)
     end_single_time_commands(cmd_buffer);
 }
 
-u32 find_memory_type(u32 type_filter, VkMemoryPropertyFlags properties) 
-{
-    VkPhysicalDeviceMemoryProperties mem_properties;
-    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
-    for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
-        if (type_filter & (1 << i) &&
-            (mem_properties.memoryTypes[i].propertyFlags & properties) ==
-            properties) {
-            return i;
-        }
-    }
-    printf("Failed to find suitable memory type\n");
-    exit(1);
-}
-
 void create_buffer(VkDeviceSize size, 
                   VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags properties, 
@@ -1165,14 +1240,15 @@ VkDescriptorBufferInfo create_buffer_info(VkBuffer buffer, u32 offset, u32 size)
 }
 
 VkWriteDescriptorSet create_buffer_write(u32 dst_set_id,
-                                         VkDescriptorBufferInfo* buffer_info)
+                                         VkDescriptorBufferInfo* buffer_info,
+                                         VkDescriptorType type)
 {
     VkWriteDescriptorSet descriptor_write{};
     descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptor_write.dstSet = descriptor_sets[dst_set_id];
     descriptor_write.dstBinding = 0;
     descriptor_write.dstArrayElement = 0;
-    descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_write.descriptorType = type;
     descriptor_write.descriptorCount = 1;
     descriptor_write.pBufferInfo = buffer_info;
     descriptor_write.pImageInfo = NULL;
@@ -1208,11 +1284,11 @@ void create_descriptor_sets()
         VkBuffer buffer = uniform_buffers[i];
         buffer_info = create_buffer_info(buffer, 0, sizeof(GlobalUniform));
         VkDescriptorImageInfo image_info{};
-        // QUESTION: should this be VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL?
-        image_info.imageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        image_info.imageView = swap_chain_image_views[prev_frame];
+        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        image_info.imageView = render_image_views[prev_frame];
         image_info.sampler = texture_sampler;
-        writes[0] = create_buffer_write(0 + i * 3, &buffer_info);
+        writes[0] = create_buffer_write(0 + i * 3, &buffer_info, 
+                                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writes[1] = VkWriteDescriptorSet{};
         writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[1].dstSet = descriptor_sets[0 + i * 3];
@@ -1224,11 +1300,13 @@ void create_descriptor_sets()
         vkUpdateDescriptorSets(device, 2, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, material_offset, sizeof(MaterialUniform));
-        writes[0] = create_buffer_write(1 + i * 3, &buffer_info);
+        writes[0] = create_buffer_write(1 + i * 3, &buffer_info, 
+                                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, object_offset, sizeof(ObjectUniform));
-        writes[0] = create_buffer_write(2 + i * 3, &buffer_info);
+        writes[0] = create_buffer_write(2 + i * 3, &buffer_info, 
+                                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         prev_frame = (prev_frame + 1) % max_frames_in_flight;
@@ -1374,57 +1452,6 @@ void transition_image_layout(VkImage image,
                          1, &barrier);
     end_single_time_commands(cmd_buffer);
 }
-
-void create_image(u32 width, 
-                  u32 height, 
-                  VkSampleCountFlagBits num_samples,
-                  VkFormat format, 
-                  VkImageTiling tiling,
-                  VkImageUsageFlags usage,
-                  VkMemoryPropertyFlags properties,
-                  VkImage* image,
-                  VkDeviceMemory* image_memory) 
-{
-    VkImageCreateInfo image_info{};
-    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_info.imageType = VK_IMAGE_TYPE_2D;
-    image_info.extent.width = width;
-    image_info.extent.height = height;
-    image_info.extent.depth = 1;
-    image_info.mipLevels = 1;
-    image_info.arrayLayers = 1;
-    image_info.format = format;
-    image_info.tiling = tiling;
-    image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    image_info.usage = usage;
-    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    image_info.samples = num_samples;
-    image_info.flags = 0;
-    if (vkCreateImage(device, 
-                      &image_info, 
-                      NULL, 
-                      image) != VK_SUCCESS) {
-        printf("Failed to create image\n");
-        exit(1);
-    }
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(device, *image, &mem_requirements);
-    VkMemoryAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = find_memory_type(
-        mem_requirements.memoryTypeBits,
-        properties);
-    if (vkAllocateMemory(device, 
-                         &alloc_info, 
-                         NULL, 
-                         image_memory) != VK_SUCCESS) {
-        printf("Failed to allocate image memory\n");
-        exit(3);
-    }
-    vkBindImageMemory(device, *image, *image_memory, 0);
-}
-
 
 void create_depth_resources()
 {
@@ -1577,6 +1604,7 @@ void init_vulkan()
     pick_physical_device(&physical_device);
     create_logical_device();
     create_swap_chain();
+    create_render_images();
     create_image_views();
     create_render_pass();
     create_descriptor_set_layouts();
