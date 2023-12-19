@@ -612,6 +612,23 @@ void create_shader_module(const char* code, u32 len, VkShaderModule* module)
     }
 }
 
+void create_layout(VkDescriptorSetLayoutBinding* bindings, 
+                       u32 binding_count,
+                       VkDescriptorSetLayout* layout) 
+{
+    VkDescriptorSetLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.bindingCount = binding_count;
+    layout_info.pBindings = bindings;
+    if (vkCreateDescriptorSetLayout(device, 
+                                    &layout_info, 
+                                    NULL, 
+                                    layout) != VK_SUCCESS) {
+        printf("Failed to create descriptor set layout\n");
+        exit(1);
+    }
+}
+
 void create_descriptor_set_layouts() 
 {
     VkDescriptorSetLayoutBinding global_binding{};
@@ -620,6 +637,12 @@ void create_descriptor_set_layouts()
     global_binding.descriptorCount = 1;
     global_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     global_binding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutBinding sampler_binding{};
+    sampler_binding.binding = 1;
+    sampler_binding.descriptorCount = 1;
+    sampler_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    sampler_binding.pImmutableSamplers = NULL;
+    sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     VkDescriptorSetLayoutBinding material_binding{};
     material_binding.binding = 0;
     material_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -635,22 +658,14 @@ void create_descriptor_set_layouts()
 
     VkDescriptorSetLayoutBinding bindings[] = {
         global_binding,
+        sampler_binding,
         material_binding,
         object_binding
     };
-    VkDescriptorSetLayoutCreateInfo layout_info{};
-    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = 1;
-    for (u32 i = 0; i < 3; ++i) {
-        layout_info.pBindings = bindings + i;
-        if (vkCreateDescriptorSetLayout(device, 
-                                        &layout_info, 
-                                        NULL, 
-                                        descriptor_set_layouts + i) != VK_SUCCESS) {
-            printf("Failed to create descriptor set layout\n");
-            exit(1);
-        }
-    }
+
+    create_layout(bindings, 2, descriptor_set_layouts);
+    create_layout(bindings + 2, 1, descriptor_set_layouts + 1);
+    create_layout(bindings + 3, 1, descriptor_set_layouts + 2);
 }
 
 void create_graphics_pipeline() 
@@ -1118,13 +1133,17 @@ void create_descriptor_pool()
     VkDescriptorPoolSize pool_size_dynamic{};
     pool_size_dynamic.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     pool_size_dynamic.descriptorCount = (u32) max_frames_in_flight * 2;
-    VkDescriptorPoolSize sizes[2] = {
+    VkDescriptorPoolSize pool_size_sampler{};
+    pool_size_sampler.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    pool_size_sampler.descriptorCount = (u32) max_frames_in_flight;
+    VkDescriptorPoolSize sizes[] = {
         pool_size,
         pool_size_dynamic,
+        pool_size_sampler,
     };
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = 2;
+    pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = sizes;
     pool_info.maxSets = (u32) max_frames_in_flight * 3;
     if (vkCreateDescriptorPool(device, 
@@ -1134,6 +1153,31 @@ void create_descriptor_pool()
         printf("Failed to create descriptor pool\n");
         exit(1);
     }
+}
+
+VkDescriptorBufferInfo create_buffer_info(VkBuffer buffer, u32 offset, u32 size)
+{
+    VkDescriptorBufferInfo buffer_info{};
+    buffer_info.buffer = buffer;
+    buffer_info.offset = offset;
+    buffer_info.range = size;
+    return buffer_info;
+}
+
+VkWriteDescriptorSet create_buffer_write(u32 dst_set_id,
+                                         VkDescriptorBufferInfo* buffer_info)
+{
+    VkWriteDescriptorSet descriptor_write{};
+    descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptor_write.dstSet = descriptor_sets[dst_set_id];
+    descriptor_write.dstBinding = 0;
+    descriptor_write.dstArrayElement = 0;
+    descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_write.descriptorCount = 1;
+    descriptor_write.pBufferInfo = buffer_info;
+    descriptor_write.pImageInfo = NULL;
+    descriptor_write.pTexelBufferView = NULL;
+    return descriptor_write;
 }
 
 void create_descriptor_sets() 
@@ -1156,57 +1200,38 @@ void create_descriptor_sets()
         printf("Failed to allocate descriptor sets\n");
         exit(1);
     }
+    u32 prev_frame = max_frames_in_flight - 1;
+    VkDescriptorBufferInfo buffer_info{};
+    VkWriteDescriptorSet writes[2];
+
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
-        // TODO: clean this up
-        VkDescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = uniform_buffers[i];
-        buffer_info.offset = 0;
-        buffer_info.range = sizeof(GlobalUniform);
-        VkWriteDescriptorSet descriptor_write{};
-        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_write.dstSet = descriptor_sets[0 + i * 3];
-        descriptor_write.dstBinding = 0;
-        descriptor_write.dstArrayElement = 0;
-        descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptor_write.descriptorCount = 1;
-        descriptor_write.pBufferInfo = &buffer_info;
-        descriptor_write.pImageInfo = NULL;
-        descriptor_write.pTexelBufferView = NULL;
-        vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
+        VkBuffer buffer = uniform_buffers[i];
+        buffer_info = create_buffer_info(buffer, 0, sizeof(GlobalUniform));
+        VkDescriptorImageInfo image_info{};
+        // QUESTION: should this be VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL?
+        image_info.imageLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        image_info.imageView = swap_chain_image_views[prev_frame];
+        image_info.sampler = texture_sampler;
+        writes[0] = create_buffer_write(0 + i * 3, &buffer_info);
+        writes[1] = VkWriteDescriptorSet{};
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = descriptor_sets[0 + i * 3];
+        writes[1].dstBinding = 1;
+        writes[1].dstArrayElement = 0;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1].descriptorCount = 1;
+        writes[1].pImageInfo = &image_info;
+        vkUpdateDescriptorSets(device, 2, writes, 0, NULL);
 
-        buffer_info = {};
-        buffer_info.buffer = uniform_buffers[i];
-        buffer_info.offset = material_offset;
-        buffer_info.range = sizeof(MaterialUniform);
-        descriptor_write = {};
-        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_write.dstSet = descriptor_sets[1 + i * 3];
-        descriptor_write.dstBinding = 0;
-        descriptor_write.dstArrayElement = 0;
-        descriptor_write.descriptorType = 
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        descriptor_write.descriptorCount = 1;
-        descriptor_write.pBufferInfo = &buffer_info;
-        descriptor_write.pImageInfo = NULL;
-        descriptor_write.pTexelBufferView = NULL;
-        vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
+        buffer_info = create_buffer_info(buffer, material_offset, sizeof(MaterialUniform));
+        writes[0] = create_buffer_write(1 + i * 3, &buffer_info);
+        vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
-        buffer_info = {};
-        buffer_info.buffer = uniform_buffers[i];
-        buffer_info.offset = object_offset;
-        buffer_info.range = sizeof(ObjectUniform);
-        descriptor_write = {};
-        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_write.dstSet = descriptor_sets[2 + i * 3];
-        descriptor_write.dstBinding = 0;
-        descriptor_write.dstArrayElement = 0;
-        descriptor_write.descriptorType = 
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        descriptor_write.descriptorCount = 1;
-        descriptor_write.pBufferInfo = &buffer_info;
-        descriptor_write.pImageInfo = NULL;
-        descriptor_write.pTexelBufferView = NULL;
-        vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, NULL);
+        buffer_info = create_buffer_info(buffer, object_offset, sizeof(ObjectUniform));
+        writes[0] = create_buffer_write(2 + i * 3, &buffer_info);
+        vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
+
+        prev_frame = (prev_frame + 1) % max_frames_in_flight;
     }
 }
 
@@ -1561,7 +1586,7 @@ void init_vulkan()
     create_framebuffers();
     // ENSURE(create_texture_image(), 20);
     // create_texture_image_view();
-    // create_texture_sampler();
+    create_texture_sampler();
     create_vertex_buffer();
     create_index_buffer();
     create_uniform_buffer();
