@@ -106,7 +106,6 @@ VkQueue present_queue;
 VkRenderPass render_pass;
 VkPipelineLayout pipeline_layout;
 VkPipeline graphics_pipeline;
-std::vector<VkFramebuffer> swap_chain_framebuffers;
 VkCommandPool command_pool;
 std::vector<VkCommandBuffer> command_buffers;
 std::vector<VkSemaphore> image_available_semaphores;
@@ -145,6 +144,7 @@ VkImage render_images[max_frames_in_flight];
 VkImageView render_image_views[max_frames_in_flight];
 VkDeviceMemory render_image_memory[max_frames_in_flight];
 VkFormat render_image_format = VK_FORMAT_R8G8B8A8_UNORM;
+VkFramebuffer framebuffers[max_frames_in_flight];
 
 // taa stuff...
 glm::mat4 proj_view;
@@ -667,7 +667,9 @@ void create_render_images()
                      VK_SAMPLE_COUNT_1_BIT,
                      render_image_format,
                      VK_IMAGE_TILING_OPTIMAL,
-                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | 
+                        VK_IMAGE_USAGE_SAMPLED_BIT | 
+                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                      render_images + i,
                      render_image_memory + i);
@@ -933,16 +935,17 @@ VkFormat find_depth_format()
 void create_render_pass() 
 {
     VkAttachmentDescription color_attachment{};
-    color_attachment.format = swap_chain_image_format;
+    color_attachment.format = render_image_format;
     color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkAttachmentReference color_attachment_ref{};
     color_attachment_ref.attachment = 0;
+    // QUESTION: Unterschied zu color_attachment.finalLayout?
     color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentDescription depth_attachment{};
     depth_attachment.format = find_depth_format();
@@ -994,10 +997,9 @@ void create_render_pass()
 
 void create_framebuffers() 
 {
-    swap_chain_framebuffers.resize(swap_chain_image_views.size());
-    for (size_t i = 0; i < swap_chain_image_views.size(); i++) {
+    for (u32 i = 0; i < max_frames_in_flight; i++) {
         VkImageView attachments[] = {
-            swap_chain_image_views[i],
+            render_image_views[i],
             depth_image_view
         };
         VkFramebufferCreateInfo framebuffer_info{};
@@ -1009,7 +1011,7 @@ void create_framebuffers()
         framebuffer_info.height = swap_chain_extent.height;
         framebuffer_info.layers = 1;
         if (vkCreateFramebuffer(device, &framebuffer_info, NULL,
-                                &swap_chain_framebuffers[i]) != VK_SUCCESS) {
+                                &framebuffers[i]) != VK_SUCCESS) {
             printf("Failed to create framebuffer\n");
             exit(1);
         }
@@ -1315,12 +1317,13 @@ void create_descriptor_sets()
 
 void cleanup_swapchain() 
 {
+    // TODO: cleanup render image views, images, memory,framebuffers, etc...
     vkDestroyImageView(device, depth_image_view, NULL);
     vkDestroyImage(device, depth_image, NULL);
     vkFreeMemory(device, depth_image_memory, NULL);
-    for (VkFramebuffer framebuffer : swap_chain_framebuffers) {
-        vkDestroyFramebuffer(device, framebuffer, NULL);
-    }
+    // for (VkFramebuffer framebuffer : swap_chain_framebuffers) {
+    //     vkDestroyFramebuffer(device, framebuffer, NULL);
+    // }
     for (VkImageView image_view : swap_chain_image_views) {
         vkDestroyImageView(device, image_view, NULL);
     }
@@ -1726,7 +1729,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     render_pass_info.renderPass = render_pass;
-    render_pass_info.framebuffer = swap_chain_framebuffers[image_index];
+    render_pass_info.framebuffer = framebuffers[image_index];
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = swap_chain_extent;
     VkClearValue clear_values[] = {
@@ -1776,6 +1779,31 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                          0);
     }
     vkCmdEndRenderPass(buffer);
+
+    VkImageSubresourceLayers subresources;
+    subresources.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresources.mipLevel = 0;
+    subresources.baseArrayLayer = 0;
+    subresources.layerCount = 1;
+    VkImageBlit blit{};
+    blit.srcOffsets[0] = {0, 0, 0};
+    blit.srcOffsets[1] = {
+        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 0
+    };
+    blit.dstOffsets[0] = {0, 0, 0};
+    blit.dstOffsets[1] = {
+        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 0
+    };
+    blit.srcSubresource = subresources;
+    blit.dstSubresource = subresources;
+    vkCmdBlitImage(buffer,
+                   render_images[current_frame],
+                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                   swap_chain_images[current_frame],
+                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                   1,
+                   &blit,
+                   VK_FILTER_NEAREST);
     if (vkEndCommandBuffer(buffer) != VK_SUCCESS) {
         printf("Failed to record command buffer\n");
         return;
