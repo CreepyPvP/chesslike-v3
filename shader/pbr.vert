@@ -25,7 +25,7 @@ layout(location = 1) in vec3 in_normal;
 
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out vec3 out_pos;
-layout(location = 2) out vec2 out_prev_screen_pos;
+layout(location = 2) out vec3 out_prev_screen_pos;
 
 vec2 jitter_offsets[] = {
     vec2(1, -1),
@@ -43,7 +43,7 @@ void main()
 
     // taa stuff...
     vec4 prev_pos = object.prev_mvp * vec4(in_position, 1.0);
-    out_prev_screen_pos = ((vec2(prev_pos.x, prev_pos.y) / prev_pos.w) + 1) / 2;
+    out_prev_screen_pos = prev_pos.xyw;
 
     // jittering
     mat4 proj_copy = global.proj;

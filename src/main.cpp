@@ -837,7 +837,7 @@ void create_graphics_pipeline()
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = 0;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     VkPipelineMultisampleStateCreateInfo multisampling{};
@@ -1737,7 +1737,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = swap_chain_extent;
     VkClearValue clear_values[] = {
-        {{6.0 / 255, 75.0 / 255, 132.0 / 255, 1.0f}},       // Color buffer
+        {{0, 0, 0}},                                        // Color buffer
         {1.0f, 0}                                           // Depth buffer
     };
     render_pass_info.clearValueCount = 2;
@@ -1783,6 +1783,28 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                          0);
     }
     vkCmdEndRenderPass(buffer);
+
+    VkImageMemoryBarrier swap_chain_to_dst{};
+    swap_chain_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    swap_chain_to_dst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    swap_chain_to_dst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    swap_chain_to_dst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swap_chain_to_dst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swap_chain_to_dst.image = swap_chain_images[image_index];
+    swap_chain_to_dst.subresourceRange.baseMipLevel = 0;
+    swap_chain_to_dst.subresourceRange.levelCount = 1;
+    swap_chain_to_dst.subresourceRange.baseArrayLayer = 0;
+    swap_chain_to_dst.subresourceRange.layerCount = 1;
+    swap_chain_to_dst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    swap_chain_to_dst.srcAccessMask = 0;
+    swap_chain_to_dst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(buffer,
+                         0,
+                         0,
+                         0,
+                         0, NULL,
+                         0, NULL,
+                         1, &swap_chain_to_dst);
 
     VkImageSubresourceLayers subresources;
     subresources.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1845,9 +1867,8 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
         barrier,
         swap_barrier
     };
-    vkCmdPipelineBarrier(buffer,
-                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    vkCmdPipelineBarrier(buffer, 0,
+                         0,
                          0,
                          0, NULL,
                          0, NULL,
