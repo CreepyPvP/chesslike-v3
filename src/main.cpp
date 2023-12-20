@@ -68,8 +68,10 @@ struct SwapChainSupportDetails
 
 struct GlobalUniform
 {
-    glm::mat4 proj_view;
+    glm::mat4 proj;
+    glm::mat4 view;
     glm::vec3 camera_pos;
+    i32 jitter_index;
 };
 
 struct MaterialUniform
@@ -148,6 +150,7 @@ VkFramebuffer framebuffers[max_frames_in_flight];
 
 // taa stuff...
 glm::mat4 proj_view;
+i32 jitter_index = 0;
 
 Scene scene;
 
@@ -942,7 +945,7 @@ void create_render_pass()
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     VkAttachmentReference color_attachment_ref{};
     color_attachment_ref.attachment = 0;
     // QUESTION: Unterschied zu color_attachment.finalLayout?
@@ -1649,20 +1652,21 @@ void update_uniform_memory(u8* memory, u32 offset, u32 size, u32 current_frame)
 void update_global_uniform()
 {
     GlobalUniform ubo;
-    glm::mat4 view = glm::lookAt(camera.pos, 
-                                 camera.pos + camera.front, 
-                                 glm::vec3(0.0, 0.0, 1.0));
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
+    ubo.view = glm::lookAt(camera.pos, 
+                           camera.pos + camera.front, 
+                           glm::vec3(0.0, 0.0, 1.0));
+    ubo.proj = glm::perspective(glm::radians(45.0f), 
                                       (float) swap_chain_extent.width / 
                                       (float) swap_chain_extent.height, 
                                       0.1f, 
                                       1000.0f);
-    proj[1][1] *= -1;
-    ubo.proj_view = proj * view;
+    ubo.proj[1][1] *= -1;
     ubo.camera_pos = camera.pos;
+    ubo.jitter_index = jitter_index;
+    jitter_index = (jitter_index + 1) % 5;
     update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
 
-    proj_view = ubo.proj_view;
+    proj_view = ubo.proj * ubo.view;
 }
 
 void update_object_uniform(u32 actor_index, Actor* actor) 
@@ -1787,23 +1791,68 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     subresources.layerCount = 1;
     VkImageBlit blit{};
     blit.srcOffsets[0] = {0, 0, 0};
-    blit.srcOffsets[1] = {
-        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 1
-    };
+    blit.srcOffsets[1].x = (i32) swap_chain_extent.width;
+    blit.srcOffsets[1].y = (i32) swap_chain_extent.height;
+    blit.srcOffsets[1].z = 1;
     blit.dstOffsets[0] = {0, 0, 0};
-    blit.dstOffsets[1] = {
-        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 1
-    };
+    blit.dstOffsets[1].x = (i32) swap_chain_extent.width;
+    blit.dstOffsets[1].y = (i32) swap_chain_extent.height;
+    blit.dstOffsets[1].z = 1;
     blit.srcSubresource = subresources;
     blit.dstSubresource = subresources;
+    // QUESTION: Warum veraendert render pass das image layout, blit aber nicht?
     vkCmdBlitImage(buffer,
                    render_images[current_frame],
-                   VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                    swap_chain_images[image_index],
-                   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                    1,
                    &blit,
                    VK_FILTER_NEAREST);
+
+    // TODO clean this up a little
+    // TODO fix validation layer complaints
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = render_images[current_frame];
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    VkImageMemoryBarrier swap_barrier{};
+    swap_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    swap_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    swap_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    swap_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swap_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    swap_barrier.image = swap_chain_images[image_index];
+    swap_barrier.subresourceRange.baseMipLevel = 0;
+    swap_barrier.subresourceRange.levelCount = 1;
+    swap_barrier.subresourceRange.baseArrayLayer = 0;
+    swap_barrier.subresourceRange.layerCount = 1;
+    swap_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    swap_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    // QUESTION: was ist die korrekte access mask??
+    swap_barrier.dstAccessMask = 0;
+    VkImageMemoryBarrier barriers[] = {
+        barrier,
+        swap_barrier
+    };
+    vkCmdPipelineBarrier(buffer,
+                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         0,
+                         0, NULL,
+                         0, NULL,
+                         2, barriers);
+
     if (vkEndCommandBuffer(buffer) != VK_SUCCESS) {
         printf("Failed to record command buffer\n");
         return;

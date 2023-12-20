@@ -5,9 +5,13 @@
 
 layout(binding = 0, set = 0) uniform GlobalUniform 
 {
-    mat4 proj_view;
+    mat4 proj;
+    mat4 view;
     vec3 camera_pos;
+    int jitter_index;
 } global;
+
+layout(binding = 1, set = 0) uniform sampler2D prev_frame;
 
 layout(binding = 0, set = 1) uniform MaterialUniform 
 {
@@ -101,16 +105,16 @@ vec3 brdf(vec3 l, vec3 v, vec3 n)
 
 void main() 
 {
-    // vec3 n = normalize(in_normal);
-    // vec3 v = normalize(global.camera_pos - in_pos);
-    //
-    // out_color = vec4(0, 0, 0, 1);
-    // for (int i = 0; i < light_count; ++i) {
-    //     vec3 l = light_dir[i];
-    //     vec3 c_light = light_colors[i];
-    //
-    //     out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
-    // }
-    // out_color.rgb *= PI;
-    out_color = vec4(in_prev_screen_pos, 0, 1);
+    vec3 n = normalize(in_normal);
+    vec3 v = normalize(global.camera_pos - in_pos);
+
+    out_color = vec4(0, 0, 0, 1);
+    for (int i = 0; i < light_count; ++i) {
+        vec3 l = light_dir[i];
+        vec3 c_light = light_colors[i];
+
+        out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
+    }
+    out_color.rgb *= PI;
+    out_color = 1.00 * out_color + 0.00 * texture(prev_frame, in_prev_screen_pos);
 }
