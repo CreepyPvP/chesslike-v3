@@ -535,7 +535,7 @@ void create_swap_chain()
     create_info.imageColorSpace = surface_format.colorSpace;
     create_info.imageExtent = extent;
     create_info.imageArrayLayers = 1;
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     u32 queue_family_indices[] = {
         queue_indices.graphics,
         queue_indices.present
@@ -997,7 +997,7 @@ void create_render_pass()
 
 void create_framebuffers() 
 {
-    for (u32 i = 0; i < max_frames_in_flight; i++) {
+    for (u32 i = 0; i < max_frames_in_flight; ++i) {
         VkImageView attachments[] = {
             render_image_views[i],
             depth_image_view
@@ -1011,7 +1011,7 @@ void create_framebuffers()
         framebuffer_info.height = swap_chain_extent.height;
         framebuffer_info.layers = 1;
         if (vkCreateFramebuffer(device, &framebuffer_info, NULL,
-                                &framebuffers[i]) != VK_SUCCESS) {
+                                framebuffers + i) != VK_SUCCESS) {
             printf("Failed to create framebuffer\n");
             exit(1);
         }
@@ -1729,7 +1729,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     render_pass_info.renderPass = render_pass;
-    render_pass_info.framebuffer = framebuffers[image_index];
+    render_pass_info.framebuffer = framebuffers[current_frame];
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = swap_chain_extent;
     VkClearValue clear_values[] = {
@@ -1788,18 +1788,18 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     VkImageBlit blit{};
     blit.srcOffsets[0] = {0, 0, 0};
     blit.srcOffsets[1] = {
-        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 0
+        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 1
     };
     blit.dstOffsets[0] = {0, 0, 0};
     blit.dstOffsets[1] = {
-        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 0
+        (i32) swap_chain_extent.width, (i32) swap_chain_extent.height, 1
     };
     blit.srcSubresource = subresources;
     blit.dstSubresource = subresources;
     vkCmdBlitImage(buffer,
                    render_images[current_frame],
                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                   swap_chain_images[current_frame],
+                   swap_chain_images[image_index],
                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                    1,
                    &blit,
