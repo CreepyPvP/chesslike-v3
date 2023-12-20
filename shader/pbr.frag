@@ -118,5 +118,5 @@ void main()
     out_color.rgb *= PI;
 
     vec2 prev_pos = ((in_prev_screen_pos.xy / in_prev_screen_pos.z) + 1) / 2;
-    out_color = 0.60 * out_color + 0.40 * texture(prev_frame, prev_pos);
+    out_color = 0.70 * out_color + 0.30 * texture(prev_frame, prev_pos);
 }
