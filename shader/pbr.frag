@@ -34,10 +34,9 @@ vec3 light_colors[] = {
 };
 
 vec3 light_dir[] = {
-    normalize(vec3(0, 1, 0)),
+    normalize(vec3(0, 1, 1)),
     normalize(vec3(-1, 0, 1))
 };
-
 
 
 float a(vec3 n, vec3 s)
@@ -116,6 +115,7 @@ void main()
         out_color.rgb += brdf(l, v, n) * c_light * clamp(dot(n, l), 0, 1);
     }
     out_color.rgb *= PI;
+    // QUESTION: ambient lighting?
 
     vec2 prev_pos = ((in_prev_screen_pos.xy / in_prev_screen_pos.z) + 1) / 2;
     out_color = 0.70 * out_color + 0.30 * texture(prev_frame, prev_pos);
