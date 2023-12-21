@@ -1320,13 +1320,15 @@ void create_descriptor_sets()
 
 void cleanup_swapchain() 
 {
-    // TODO: cleanup render image views, images, memory,framebuffers, etc...
     vkDestroyImageView(device, depth_image_view, NULL);
     vkDestroyImage(device, depth_image, NULL);
     vkFreeMemory(device, depth_image_memory, NULL);
-    // for (VkFramebuffer framebuffer : swap_chain_framebuffers) {
-    //     vkDestroyFramebuffer(device, framebuffer, NULL);
-    // }
+    for (u32 i = 0; i < max_frames_in_flight; ++i) {
+        vkDestroyFramebuffer(device, framebuffers[i], NULL);
+        vkDestroyImageView(device, render_image_views[i], NULL);
+        vkDestroyImage(device, render_images[i], NULL);
+        vkFreeMemory(device, render_image_memory[i], NULL);
+    }
     for (VkImageView image_view : swap_chain_image_views) {
         vkDestroyImageView(device, image_view, NULL);
     }
@@ -1349,10 +1351,15 @@ void recreate_swap_chain()
     vkDeviceWaitIdle(device);
     cleanup_swapchain();
     create_swap_chain();
+    create_render_images();
     create_image_views();
     create_depth_resources();
     create_framebuffers();
     create_graphics_pipeline();
+
+    vkDestroyDescriptorPool(device, descriptor_pool, NULL);
+    create_descriptor_pool();
+    create_descriptor_sets();
 }
 
 void create_command_buffers() 
@@ -1709,6 +1716,12 @@ void init_materials()
     gold.specular = glm::vec3(1.00, 0.78, 0.34);
     gold.diffuse = glm::vec3(0.0, 0.0, 0.0);
 
+    MaterialUniform floor;
+    floor.smoothness = 0.05;
+    floor.roughness = 1.00;
+    floor.specular = glm::vec3(0.01, 0.01, 0.01);
+    floor.diffuse = glm::vec3(0.5, 0.5, 0.5);
+
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
         update_uniform_memory((u8*) &water, 
                               material_offset, 
@@ -1716,6 +1729,10 @@ void init_materials()
                               i);
         update_uniform_memory((u8*) &gold, 
                               material_offset + dynamic_align[1], 
+                              sizeof(MaterialUniform),
+                              i);
+        update_uniform_memory((u8*) &floor, 
+                              material_offset + 2 * dynamic_align[1], 
                               sizeof(MaterialUniform),
                               i);
     }
@@ -1784,6 +1801,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     }
     vkCmdEndRenderPass(buffer);
 
+    // TODO: clean this up
     VkImageMemoryBarrier swap_chain_to_dst{};
     swap_chain_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     swap_chain_to_dst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1799,8 +1817,8 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     swap_chain_to_dst.srcAccessMask = 0;
     swap_chain_to_dst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     vkCmdPipelineBarrier(buffer,
-                         0,
-                         0,
+                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
                          0,
                          0, NULL,
                          0, NULL,
@@ -1822,7 +1840,6 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     blit.dstOffsets[1].z = 1;
     blit.srcSubresource = subresources;
     blit.dstSubresource = subresources;
-    // QUESTION: Warum veraendert render pass das image layout, blit aber nicht?
     vkCmdBlitImage(buffer,
                    render_images[current_frame],
                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -1832,8 +1849,6 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                    &blit,
                    VK_FILTER_NEAREST);
 
-    // TODO clean this up a little
-    // TODO fix validation layer complaints
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -1861,14 +1876,14 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     swap_barrier.subresourceRange.layerCount = 1;
     swap_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     swap_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    // QUESTION: was ist die korrekte access mask??
     swap_barrier.dstAccessMask = 0;
     VkImageMemoryBarrier barriers[] = {
         barrier,
         swap_barrier
     };
-    vkCmdPipelineBarrier(buffer, 0,
-                         0,
+    vkCmdPipelineBarrier(buffer, 
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                          0,
                          0, NULL,
                          0, NULL,

@@ -34,7 +34,7 @@ vec3 light_colors[] = {
 };
 
 vec3 light_dir[] = {
-    normalize(vec3(0, 1, 1)),
+    normalize(vec3(1, 1, 2)),
     normalize(vec3(-1, 0, 1))
 };
 
