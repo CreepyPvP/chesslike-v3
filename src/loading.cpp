@@ -160,7 +160,7 @@ void load_model(const char* file, ModelParams* model)
     model->indices = indices;
 }
 
-void load_scene(const char* file, Scene* scene) 
+void source_file(const char* file, Scene* scene) 
 {
     i32 len;
     tmp_arena.start_scope();
@@ -280,7 +280,7 @@ void load_scene(const char* file, Scene* scene)
                 }
             }
             next_line(ptr);
-        }else if (**ptr == 0) {
+        } else if (**ptr == 0) {
             reached_end = true;
         }
     }

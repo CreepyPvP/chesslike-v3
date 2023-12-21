@@ -2041,7 +2041,7 @@ i32 main()
     model_buffer.init();
     scene.init();
     camera.init();
-    load_scene("assets/scene.sce", &scene);
+    source_file("assets/scene.end", &scene);
     init_vulkan();
     init_materials();
     main_loop();

@@ -8,6 +8,7 @@ layout(binding = 0, set = 0) uniform GlobalUniform
     mat4 proj;
     mat4 view;
     vec3 camera_pos;
+    int align;              // this has to be there for byte alignment
     int jitter_index;
 } global;
 
@@ -36,6 +37,14 @@ vec3 light_colors[] = {
 vec3 light_dir[] = {
     normalize(vec3(1, 1, 2)),
     normalize(vec3(-1, 0, 1))
+};
+
+vec2 jitter_offsets[] = {
+    vec2(0.2, -0.2),
+    vec2(0, 0),
+    vec2(-0.2, 0.2),
+    vec2(0.2, 0.2),
+    vec2(-0.2, -0.2),
 };
 
 
@@ -119,5 +128,6 @@ void main()
 
     // TODO: Fix moving of "negative highlights"
     vec2 prev_pos = ((in_prev_screen_pos.xy / in_prev_screen_pos.z) + 1) / 2;
+    prev_pos += jitter_offsets[global.jitter_index] / vec2(1280, 720);
     out_color = 0.50 * out_color + 0.50 * texture(prev_frame, prev_pos);
 }

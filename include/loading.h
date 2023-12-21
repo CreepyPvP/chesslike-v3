@@ -2,4 +2,4 @@
 
 #include "include/scene.h"
 
-void load_scene(const char* file, Scene* scene);
+void source_file(const char* file, Scene* scene);
