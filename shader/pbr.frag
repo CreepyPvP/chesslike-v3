@@ -117,6 +117,7 @@ void main()
     out_color.rgb *= PI;
     // QUESTION: ambient lighting?
 
+    // TODO: Fix moving of "negative highlights"
     vec2 prev_pos = ((in_prev_screen_pos.xy / in_prev_screen_pos.z) + 1) / 2;
     out_color = 0.50 * out_color + 0.50 * texture(prev_frame, prev_pos);
 }

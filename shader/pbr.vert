@@ -46,6 +46,7 @@ void main()
     out_prev_screen_pos = prev_pos.xyw;
 
     // jittering
+    // TODO: Fix for near objects
     mat4 proj_copy = global.proj;
     vec2 jitter_offset = jitter_offsets[global.jitter_index];
     proj_copy[3][0] += jitter_offset.x / 1280;

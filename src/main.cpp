@@ -1802,6 +1802,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     vkCmdEndRenderPass(buffer);
 
     // TODO: clean this up
+    // TODO: switch image layout of other render buffer
     VkImageMemoryBarrier swap_chain_to_dst{};
     swap_chain_to_dst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     swap_chain_to_dst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
