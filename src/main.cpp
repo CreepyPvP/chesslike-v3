@@ -71,6 +71,7 @@ struct GlobalUniform
     glm::mat4 proj;
     glm::mat4 view;
     glm::vec3 camera_pos;
+    glm::vec2 screen_size;
     i32 jitter_index;
 };
 
@@ -1670,6 +1671,8 @@ void update_global_uniform()
     ubo.proj[1][1] *= -1;
     ubo.camera_pos = camera.pos;
     ubo.jitter_index = jitter_index;
+    ubo.screen_size = glm::vec2(swap_chain_extent.width, 
+                                swap_chain_extent.height);
     jitter_index = (jitter_index + 1) % 5;
     update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
 
