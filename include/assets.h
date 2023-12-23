@@ -9,9 +9,21 @@ struct Vertex
     float x;
     float y;
     float z;
-    float n_x;
-    float n_y;
-    float n_z;
+    float nx;
+    float ny;
+    float nz;
+};
+
+struct SkinnedVertex 
+{
+    float x;
+    float y;
+    float z;
+    float nx;
+    float ny;
+    float nz;
+    i32 bones[3];
+    float weights[3];
 };
 
 struct Model

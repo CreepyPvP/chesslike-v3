@@ -68,8 +68,7 @@ struct SwapChainSupportDetails
 
 struct GlobalUniform
 {
-    glm::mat4 proj;
-    glm::mat4 view;
+    glm::mat4 proj_view;
     glm::vec3 camera_pos;
     glm::vec2 screen_size;
     i32 jitter_index;
@@ -107,8 +106,6 @@ VkPhysicalDevice physical_device;
 VkQueue graphics_queue;
 VkQueue present_queue;
 VkRenderPass render_pass;
-VkPipelineLayout pipeline_layout;
-VkPipeline graphics_pipeline;
 VkCommandPool command_pool;
 std::vector<VkCommandBuffer> command_buffers;
 std::vector<VkSemaphore> image_available_semaphores;
@@ -148,6 +145,12 @@ VkImageView render_image_views[max_frames_in_flight];
 VkDeviceMemory render_image_memory[max_frames_in_flight];
 VkFormat render_image_format = VK_FORMAT_R8G8B8A8_UNORM;
 VkFramebuffer framebuffers[max_frames_in_flight];
+
+// pipelines
+// 0 => static objects, 1 => skinned objects
+#define PIPELINE_COUNT 2
+VkPipelineLayout pipeline_layouts[2];
+VkPipeline graphics_pipelines[2];
 
 // taa stuff...
 glm::mat4 proj_view;
@@ -189,18 +192,6 @@ static VkVertexInputBindingDescription bind_desc()
     desc.stride = sizeof(Vertex);
     desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     return desc;
-}
-
-static void get_attr_desc(VkVertexInputAttributeDescription* attr_desc)
-{
-    attr_desc[0].binding = 0;
-    attr_desc[0].location = 0;
-    attr_desc[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attr_desc[0].offset = offsetof(Vertex, x);
-    attr_desc[1].binding = 0;
-    attr_desc[1].location = 1;
-    attr_desc[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attr_desc[1].offset = offsetof(Vertex, n_x);
 }
 
 void init_window() 
@@ -764,17 +755,22 @@ void create_descriptor_set_layouts()
     create_layout(bindings + 3, 1, descriptor_set_layouts + 2);
 }
 
-void create_graphics_pipeline() 
+void create_graphics_pipeline(const char* vert_file,
+                              const char* frag_file,
+                              VkVertexInputAttributeDescription* attr_desc,
+                              u32 attr_count,
+                              VkPipelineLayout* layout,
+                              VkPipeline* pipeline)
 {
     VkShaderModule vert_shader;
     VkShaderModule frag_shader;
     i32 len;
-    char* buffer = read_file("vert.spv", &len, NULL);
+    char* buffer = read_file(vert_file, &len, NULL);
     if (!buffer)
         exit(1);
     create_shader_module(buffer, len, &vert_shader);
     free(buffer);
-    buffer = read_file("frag.spv", &len, NULL);
+    buffer = read_file(frag_file, &len, NULL);
     if (!buffer)
         exit(1);
     create_shader_module(buffer, len, &frag_shader);
@@ -799,16 +795,13 @@ void create_graphics_pipeline()
     dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamic_state.dynamicStateCount = 0;
     VkVertexInputBindingDescription binding_description = bind_desc();
-    VkVertexInputAttributeDescription attribute_description[2]; 
-    get_attr_desc(attribute_description);
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
     vertex_input_info.sType =
         VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertex_input_info.vertexBindingDescriptionCount = 1;
     vertex_input_info.pVertexBindingDescriptions = &binding_description;
-    // TODO: this has to be set correctly
-    vertex_input_info.vertexAttributeDescriptionCount = 2;
-    vertex_input_info.pVertexAttributeDescriptions = attribute_description;
+    vertex_input_info.vertexAttributeDescriptionCount = attr_count;
+    vertex_input_info.pVertexAttributeDescriptions = attr_desc;
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
     input_assembly.sType =
         VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -817,8 +810,8 @@ void create_graphics_pipeline()
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float)swap_chain_extent.width;
-    viewport.height = (float)swap_chain_extent.height;
+    viewport.width = (float) swap_chain_extent.width;
+    viewport.height = (float) swap_chain_extent.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     VkRect2D scissors{};
@@ -862,7 +855,7 @@ void create_graphics_pipeline()
     pipeline_layout_info.setLayoutCount = 3;
     pipeline_layout_info.pSetLayouts = descriptor_set_layouts;
     if (vkCreatePipelineLayout(device, &pipeline_layout_info, NULL,
-                               &pipeline_layout) != VK_SUCCESS) {
+                               layout) != VK_SUCCESS) {
         printf("Failed to create pipeline layout\n");
         exit(1);
     }
@@ -888,18 +881,63 @@ void create_graphics_pipeline()
     pipeline_info.pDepthStencilState = &depth_stencil;
     pipeline_info.pColorBlendState = &color_blending;
     pipeline_info.pDynamicState = &dynamic_state;
-    pipeline_info.layout = pipeline_layout;
+    pipeline_info.layout = *layout;
     pipeline_info.renderPass = render_pass;
     pipeline_info.subpass = 0;
     pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
     pipeline_info.basePipelineIndex = -1;
     if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info,
-                                  NULL, &graphics_pipeline) != VK_SUCCESS) {
+                                  NULL, pipeline) != VK_SUCCESS) {
         printf("Failed to create graphics pipeline\n");
         exit(1);
     }
     vkDestroyShaderModule(device, vert_shader, NULL);
     vkDestroyShaderModule(device, frag_shader, NULL);
+}
+
+void create_pipelines() 
+{
+    VkVertexInputAttributeDescription static_attr[2];
+    static_attr[0].binding = 0;
+    static_attr[0].location = 0;
+    static_attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    static_attr[0].offset = offsetof(Vertex, x);
+    static_attr[1].binding = 0;
+    static_attr[1].location = 1;
+    static_attr[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    static_attr[1].offset = offsetof(Vertex, nx);
+
+    VkVertexInputAttributeDescription skinned_attr[4];
+    skinned_attr[0].binding = 0;
+    skinned_attr[0].location = 0;
+    skinned_attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    skinned_attr[0].offset = offsetof(SkinnedVertex, x);
+    skinned_attr[1].binding = 0;
+    skinned_attr[1].location = 1;
+    skinned_attr[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    skinned_attr[1].offset = offsetof(SkinnedVertex, nx);
+    skinned_attr[2].binding = 0;
+    skinned_attr[2].location = 2;
+    skinned_attr[2].format = VK_FORMAT_R32G32B32_SINT;
+    skinned_attr[2].offset = offsetof(SkinnedVertex, bones);
+    skinned_attr[3].binding = 0;
+    skinned_attr[3].location = 3;
+    skinned_attr[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+    skinned_attr[3].offset = offsetof(SkinnedVertex, weights);
+
+    create_graphics_pipeline("shader/staticv.spv",
+                             "shader/pbr_frag.spv",
+                             static_attr,
+                             2,
+                             pipeline_layouts,
+                             graphics_pipelines);
+
+    create_graphics_pipeline("shader/skinnedv.spv",
+                             "shader/pbr_frag.spv",
+                             skinned_attr,
+                             4,
+                             pipeline_layouts + 1,
+                             graphics_pipelines + 1);
 }
 
 VkFormat find_supported_format(VkFormat* candidates, 
@@ -1334,8 +1372,10 @@ void cleanup_swapchain()
         vkDestroyImageView(device, image_view, NULL);
     }
     vkDestroySwapchainKHR(device, swap_chain, NULL);
-    vkDestroyPipeline(device, graphics_pipeline, NULL);
-    vkDestroyPipelineLayout(device, pipeline_layout, NULL);
+    for (u32 i = 0; i < PIPELINE_COUNT; ++i ) {
+        vkDestroyPipeline(device, graphics_pipelines[i], NULL);
+        vkDestroyPipelineLayout(device, pipeline_layouts[i], NULL);
+    }
 }
 
 void create_depth_resources();
@@ -1356,7 +1396,7 @@ void recreate_swap_chain()
     create_image_views();
     create_depth_resources();
     create_framebuffers();
-    create_graphics_pipeline();
+    create_pipelines();
 
     vkDestroyDescriptorPool(device, descriptor_pool, NULL);
     create_descriptor_pool();
@@ -1622,7 +1662,7 @@ void init_vulkan()
     create_image_views();
     create_render_pass();
     create_descriptor_set_layouts();
-    create_graphics_pipeline();
+    create_pipelines();
     create_command_pool();
     create_depth_resources();
     create_framebuffers();
@@ -1660,15 +1700,16 @@ void update_uniform_memory(u8* memory, u32 offset, u32 size, u32 current_frame)
 void update_global_uniform()
 {
     GlobalUniform ubo;
-    ubo.view = glm::lookAt(camera.pos, 
-                           camera.pos + camera.front, 
-                           glm::vec3(0.0, 0.0, 1.0));
-    ubo.proj = glm::perspective(glm::radians(45.0f), 
+    glm::mat4 view = glm::lookAt(camera.pos, 
+                                 camera.pos + camera.front, 
+                                 glm::vec3(0.0, 0.0, 1.0));
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
                                       (float) swap_chain_extent.width / 
                                       (float) swap_chain_extent.height, 
                                       0.1f, 
                                       1000.0f);
-    ubo.proj[1][1] *= -1;
+    proj[1][1] *= -1;
+    ubo.proj_view = proj * view;
     ubo.camera_pos = camera.pos;
     ubo.jitter_index = jitter_index;
     ubo.screen_size = glm::vec2(swap_chain_extent.width, 
@@ -1676,7 +1717,7 @@ void update_global_uniform()
     jitter_index = (jitter_index + 1) % 5;
     update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
 
-    proj_view = ubo.proj * ubo.view;
+    proj_view = ubo.proj_view;
 }
 
 void update_object_uniform(u32 actor_index, Actor* actor) 
@@ -1768,7 +1809,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                          VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(buffer, 
                       VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      graphics_pipeline);
+                      graphics_pipelines[0]);
     VkBuffer vertex_buffers[] = {vertex_buffer};
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
@@ -1780,7 +1821,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     flush_uniform_buffer();
     vkCmdBindDescriptorSets(buffer, 
                             VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                            pipeline_layout,
+                            pipeline_layouts[0],
                             0,
                             1, descriptor_sets + 0 + current_frame * 3,
                             0, NULL);
@@ -1791,7 +1832,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
         Model model = *(scene.actors[i].model);
         vkCmdBindDescriptorSets(buffer, 
                                 VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                                pipeline_layout,
+                                pipeline_layouts[0],
                                 1,
                                 2, descriptor_sets + 1 + current_frame * 3,
                                 2, dynamic_offsets);

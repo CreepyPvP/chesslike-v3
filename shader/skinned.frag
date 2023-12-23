@@ -7,7 +7,7 @@ layout(binding = 0, set = 0) uniform GlobalUniform
 {
     mat4 proj_view;
     vec3 camera_pos;
-    int _a;              // this has to be there for byte alignment
+    int __a;              // this has to be there for byte alignment
     vec2 screen_size;
     int jitter_index;
 } global;

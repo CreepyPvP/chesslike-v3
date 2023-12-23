@@ -1,7 +1,15 @@
-shader: frag.spv vert.spv
+.PHONY: clean
 
-frag.spv: shader/pbr.frag
-	glslc shader/pbr.frag -o frag.spv
+shader: shader/pbr_frag.spv shader/staticv.spv shader/skinnedv.spv
 
-vert.spv: shader/pbr.vert
-	glslc shader/pbr.vert -o vert.spv
+shader/pbr_frag.spv: shader/pbr.frag
+	glslc shader/pbr.frag -o shader/pbr_frag.spv
+
+shader/staticv.spv: shader/pbr.vert
+	glslc shader/pbr.vert -o shader/staticv.spv
+
+shader/skinnedv.spv: shader/pbr.vert
+	glslc shader/skinned.vert -o shader/skinnedv.spv
+
+clean:
+	del shader\*.spv
