@@ -1,7 +1,9 @@
 1 (Version number)
 
+# this is a comment
 MODEL dragon
 PATH assets/default.mod
+
 MODEL cube
 PATH assets/cube.mod
 

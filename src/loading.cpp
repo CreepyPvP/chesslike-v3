@@ -280,6 +280,8 @@ void source_file(const char* file, Scene* scene)
                 }
             }
             next_line(ptr);
+        } else if (prefix("#", ptr)) {
+            next_line(ptr);
         } else if (**ptr == 0) {
             reached_end = true;
         }
