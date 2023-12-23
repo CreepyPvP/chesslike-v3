@@ -11,24 +11,55 @@
 
 #define MAX_MODELS 64
 #define MAX_SKELETONS 64
-#define MAX_BONES 128
+#define MAX_BONES 64
+
+#define MODEL_FLAG_SKINNED 1 << 0
 
 
-enum CtxType 
+enum ContextType 
 {
-    NONE,
+    NONE = 0,
     MODEL,
     ACTOR,
     SKELETON,
 };
 
-struct ModelParams
+struct ModelContext 
 {
-    Vertex* vertices;
-    u32* indices;
-    u32 vertex_count;
-    u32 index_count;
     char* name;
+    char* file;
+
+    void* vertex_ptr;
+    u32 vertex_count;
+    u32 vertex_stride;
+    u32* index_ptr;
+    u32 index_count;
+    
+    u8 flags;
+};
+
+struct SkeletonContext
+{
+    glm::mat4 bones[MAX_BONES];
+    u32 bone_count;
+};
+
+struct Context 
+{
+    union {
+        ModelContext model;
+        Actor actor;
+        SkeletonContext skeleton;
+    };
+
+    ContextType type;
+
+    char* model_names[MAX_MODELS];
+    Model* models[MAX_MODELS];
+    u32 model_count;
+
+    char* skeleton_names[MAX_SKELETONS];
+    u32 skeleton_count;
 };
 
 // returns true if ptr starts with prefix. 
@@ -113,33 +144,7 @@ i32 read_int(const char** ptr)
     return result;
 }
 
-void flush_ctx(CtxType type, 
-               Actor actor_ctx, 
-               ModelParams model_ctx, 
-               Scene* scene,
-               char** model_names,
-               Model** models,
-               u32* model_count)
-{
-    if (type == ACTOR) {
-        scene->add(actor_ctx);
-    } else if (type == MODEL) {
-        if (model_ctx.vertices == NULL || model_ctx.indices == NULL) {
-            printf("No path specified for model: %s\n", model_ctx.name);
-            return;
-        }
-        Model* ptr = model_buffer.stage(model_ctx.vertices, 
-                                        model_ctx.vertex_count, 
-                                        model_ctx.indices, 
-                                        model_ctx.index_count);
-        assert(*model_count < MAX_MODELS);
-        model_names[*model_count] = model_ctx.name;
-        models[*model_count] = ptr;
-        (*model_count) += 1;
-    }
-}
-
-void load_model(const char* file, ModelParams* model) 
+void load_model(const char* file, ModelContext* model, u8 flags) 
 {
     i32 file_len;
     char* buffer = read_file(file, &file_len, &asset_arena);
@@ -151,7 +156,13 @@ void load_model(const char* file, ModelParams* model)
     ++int_ptr;
     u32 index_count = *int_ptr;
     ++int_ptr;
+    u32 vertex_stride = sizeof(Vertex);
+    if (flags & MODEL_FLAG_SKINNED) {
+        vertex_stride = sizeof(SkinnedVertex);
+    }
     
+    // TODO: does little / big endian matter here? Investigate!
+    // TODO: use stride here
     Vertex* vertex_ptr = (Vertex*) int_ptr;
     Vertex* vertices =  vertex_ptr;
     vertex_ptr += vertex_count;
@@ -160,8 +171,32 @@ void load_model(const char* file, ModelParams* model)
 
     model->vertex_count = vertex_count;
     model->index_count = index_count;
-    model->vertices = vertices;
-    model->indices = indices;
+    model->vertex_ptr = vertices;
+    model->index_ptr = indices;
+    model->vertex_stride = vertex_stride;
+}
+
+void flush_ctx(Context* context, Scene* scene)
+{
+    if (context->type == ACTOR) {
+        scene->add(context->actor);
+    } else if (context->type == MODEL) {
+        if (!context->model.file) {
+            printf("No path specified for model: %s\n", context->model.name);
+            return;
+        }
+        load_model(context->model.file, &context->model, context->model.flags);
+        Model* ptr = model_buffer.stage((Vertex*) context->model.vertex_ptr, 
+                                        context->model.vertex_count, 
+                                        context->model.index_ptr, 
+                                        context->model.index_count);
+        assert(context->model_count < MAX_MODELS);
+        context->model_names[context->model_count] = context->model.name;
+        context->models[context->model_count] = ptr;
+        context->model_count++;
+    } else if (context->type == SKELETON) {
+
+    }
 }
 
 void source_file(const char* file, Scene* scene) 
@@ -176,150 +211,130 @@ void source_file(const char* file, Scene* scene)
     printf("Parsing scene: %s\n", file);
     const char** ptr = &content;
     bool reached_end = false;
-    CtxType ctx_type = NONE;
-    Actor actor_ctx{};
-    ModelParams model_ctx{};
-    char* model_names[MAX_MODELS];
-    Model* models[MAX_MODELS];
-    u32 model_count = 0;
-
-    char* skeleton_names[MAX_SKELETONS];
-    Skeleton* skeletons[MAX_SKELETONS];
-    u32 skeleton_count = 0;
-
-    glm::mat4 bone_acc[MAX_BONES];
-    u32 bone_count = 0;
+    Context context{};
 
     i32 version = read_version(&content);
     while (!reached_end) {
         if (prefix("MODEL", ptr)) {
-            flush_ctx(ctx_type, 
-                      actor_ctx, 
-                      model_ctx,
-                      scene, 
-                      model_names, 
-                      models, 
-                      &model_count);
+            flush_ctx(&context, scene);
 
             skip_whitespaces(ptr);
             char* name = read_ident(ptr);
             next_line(ptr);
-            ctx_type = MODEL;
-            model_ctx = ModelParams{};
-            model_ctx.name = name;
+            context.type = MODEL;
+            context.model = ModelContext{};
+            context.model.name = name;
         } else if (prefix("ACTOR", ptr)) {
-            flush_ctx(ctx_type, 
-                      actor_ctx, 
-                      model_ctx,
-                      scene, 
-                      model_names, 
-                      models, 
-                      &model_count);
+            flush_ctx(&context, scene);
 
             skip_whitespaces(ptr);
             char* model = read_ident(ptr);
             next_line(ptr);
-            ctx_type = ACTOR;
-            actor_ctx = {};
-            actor_ctx.scale_x = 1;
-            actor_ctx.scale_y = 1;
-            actor_ctx.scale_z = 1;
-            for (u32 i = 0; i < model_count; ++i) {
-                if (strcmp(model_names[i], model) == 0) {
-                    actor_ctx.model = models[i];
+            context.type = ACTOR;
+            context.actor = {};
+            context.actor.scale_x = 1;
+            context.actor.scale_y = 1;
+            context.actor.scale_z = 1;
+            for (u32 i = 0; i < context.model_count; ++i) {
+                if (strcmp(context.model_names[i], model) == 0) {
+                    context.actor.model = context.models[i];
                     break;
                 }
             }
-            if (actor_ctx.model == NULL) {
+            if (context.actor.model == NULL) {
                 printf("Unknown model: %s\n", model);
             }
         } else if (prefix("PATH", ptr)) {
             skip_whitespaces(ptr);
             char* path = read_ident(ptr);
             next_line(ptr);
-            if (ctx_type == MODEL) {
-                load_model(path, &model_ctx);
+            if (context.type == MODEL) {
+                context.model.file = path;
             }
         } else if (prefix("POSITION", ptr)) {
             skip_whitespaces(ptr);
-            if (ctx_type == ACTOR) {
+            if (context.type == ACTOR) {
                 float x = read_float(ptr);
                 skip_whitespaces(ptr);
                 float y = read_float(ptr);
                 skip_whitespaces(ptr);
                 float z = read_float(ptr);
                 skip_whitespaces(ptr);
-                actor_ctx.x = x;
-                actor_ctx.y = y;
-                actor_ctx.z = z;
+                context.actor.x = x;
+                context.actor.y = y;
+                context.actor.z = z;
             }
             next_line(ptr);
         } else if (prefix("ROTATION", ptr)) {
             skip_whitespaces(ptr);
-            if (ctx_type == ACTOR) {
+            if (context.type == ACTOR) {
                 float x = read_float(ptr);
                 skip_whitespaces(ptr);
                 float y = read_float(ptr);
                 skip_whitespaces(ptr);
                 float z = read_float(ptr);
                 skip_whitespaces(ptr);
-                actor_ctx.rot_x = x;
-                actor_ctx.rot_y = y;
-                actor_ctx.rot_z = z;
+                context.actor.rot_x = x;
+                context.actor.rot_y = y;
+                context.actor.rot_z = z;
             }
             next_line(ptr);
         } else if (prefix("SCALE", ptr)) {
             skip_whitespaces(ptr);
-            if (ctx_type == ACTOR) {
+            if (context.type == ACTOR) {
                 float x = read_float(ptr);
                 skip_whitespaces(ptr);
                 float y = read_float(ptr);
                 skip_whitespaces(ptr);
                 float z = read_float(ptr);
                 skip_whitespaces(ptr);
-                actor_ctx.scale_x = x;
-                actor_ctx.scale_y = y;
-                actor_ctx.scale_z = z;
+                context.actor.scale_x = x;
+                context.actor.scale_y = y;
+                context.actor.scale_z = z;
             }
             next_line(ptr);
         } else if (prefix("MATERIAL", ptr)) {
             skip_whitespaces(ptr);
-            if (ctx_type == ACTOR) {
+            if (context.type == ACTOR) {
                 i32 material = read_int(ptr);
                 if (material >= 0) {
-                    actor_ctx.material = material;
+                    context.actor.material = material;
                 }
             }
             next_line(ptr);
         } else if (prefix("SKELETON", ptr)) {
-            flush_ctx(ctx_type, 
-                      actor_ctx, 
-                      model_ctx,
-                      scene, 
-                      model_names, 
-                      models, 
-                      &model_count);
+            flush_ctx(&context, scene);
             skip_whitespaces(ptr);
             char* name = read_ident(ptr);
-            ctx_type = SKELETON;
-            assert(skeleton_count < MAX_SKELETONS);
-            skeleton_names[skeleton_count] = name;
+            context.type = SKELETON;
+            context.skeleton = {};
+            assert(context.skeleton_count < MAX_SKELETONS);
+            context.skeleton_names[context.skeleton_count] = name;
             next_line(ptr);
         } else if (prefix("BONE", ptr)) {
             skip_whitespaces(ptr);
-            if (ctx_type == SKELETON) {
-                assert(bone_count < MAX_BONES);
-                char* name = read_ident(ptr);
-                float* matrix_value = (float*) (bone_acc + bone_count);
-                for (u32 i = 0; i < 16; ++i) {
-                    skip_whitespaces(ptr);
-                    *matrix_value = read_float(ptr);
-                    matrix_value++;
-                }
-                bone_count++;
+            if (context.type != SKELETON) {
+                printf("BONE has to be in skeleton context\n");
+                exit(1);
             }
+            assert(context.skeleton.bone_count < MAX_BONES);
+            char* name = read_ident(ptr);
+            float* matrix_value = (float*) (context.skeleton.bones + context.skeleton.bone_count);
+            for (u32 i = 0; i < 16; ++i) {
+                skip_whitespaces(ptr);
+                *matrix_value = read_float(ptr);
+                matrix_value++;
+            }
+            context.skeleton.bone_count++;
             next_line(ptr);
         } else if (prefix("USE_SKELETON", ptr)) {
+            if (context.type != MODEL) {
+                printf("USE_SKELETON has to be used in Model context\n");
+                exit(1);
+            }
+            context.model.flags |= MODEL_FLAG_SKINNED;
+            skip_whitespaces(ptr);
+            char* name = read_ident(ptr);
             next_line(ptr);
         } else if (prefix("#", ptr)) {
             next_line(ptr);
@@ -330,12 +345,6 @@ void source_file(const char* file, Scene* scene)
             exit(1);
         }
     }
-    flush_ctx(ctx_type, 
-              actor_ctx, 
-              model_ctx,
-              scene, 
-              model_names, 
-              models, 
-              &model_count);
+    flush_ctx(&context, scene);
     tmp_arena.end_scope();
 }
