@@ -1,11 +1,17 @@
 1 (Version number)
 
-comment
+SKELETON sk_cube
+BONE bone_center 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1
+
 MODEL dragon
 PATH assets/default.mod
 
 MODEL cube
 PATH assets/cube.mod
+
+MODEL skinned_cube
+PATH assets/skinned_cube.mod
+USE_SKELETON sk_cube
 
 ACTOR dragon
 POSITION 00.0 0.0 0
@@ -23,3 +29,4 @@ POSITION 0.0 0.0 0.25
 ROTATION 0.0 0.0 0.0
 SCALE 30.0 30.0 0.1
 MATERIAL 2
+

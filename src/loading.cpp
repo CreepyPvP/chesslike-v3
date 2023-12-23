@@ -10,6 +10,8 @@
 #include <string.h>
 
 #define MAX_MODELS 64
+#define MAX_SKELETONS 64
+#define MAX_BONES 128
 
 
 enum CtxType 
@@ -17,6 +19,7 @@ enum CtxType
     NONE,
     MODEL,
     ACTOR,
+    SKELETON,
 };
 
 struct ModelParams
@@ -72,6 +75,7 @@ bool is_char(char c)
     return (c >= 'a' && c <= 'z') || 
         (c >= 'A' && c <= 'Z') || 
         c == '/' ||
+        c == '_' ||
         c == '.';
 }
 
@@ -179,6 +183,13 @@ void source_file(const char* file, Scene* scene)
     Model* models[MAX_MODELS];
     u32 model_count = 0;
 
+    char* skeleton_names[MAX_SKELETONS];
+    Skeleton* skeletons[MAX_SKELETONS];
+    u32 skeleton_count = 0;
+
+    glm::mat4 bone_acc[MAX_BONES];
+    u32 bone_count = 0;
+
     i32 version = read_version(&content);
     while (!reached_end) {
         if (prefix("MODEL", ptr)) {
@@ -279,6 +290,36 @@ void source_file(const char* file, Scene* scene)
                     actor_ctx.material = material;
                 }
             }
+            next_line(ptr);
+        } else if (prefix("SKELETON", ptr)) {
+            flush_ctx(ctx_type, 
+                      actor_ctx, 
+                      model_ctx,
+                      scene, 
+                      model_names, 
+                      models, 
+                      &model_count);
+            skip_whitespaces(ptr);
+            char* name = read_ident(ptr);
+            ctx_type = SKELETON;
+            assert(skeleton_count < MAX_SKELETONS);
+            skeleton_names[skeleton_count] = name;
+            next_line(ptr);
+        } else if (prefix("BONE", ptr)) {
+            skip_whitespaces(ptr);
+            if (ctx_type == SKELETON) {
+                assert(bone_count < MAX_BONES);
+                char* name = read_ident(ptr);
+                float* matrix_value = (float*) (bone_acc + bone_count);
+                for (u32 i = 0; i < 16; ++i) {
+                    skip_whitespaces(ptr);
+                    *matrix_value = read_float(ptr);
+                    matrix_value++;
+                }
+                bone_count++;
+            }
+            next_line(ptr);
+        } else if (prefix("USE_SKELETON", ptr)) {
             next_line(ptr);
         } else if (prefix("#", ptr)) {
             next_line(ptr);
