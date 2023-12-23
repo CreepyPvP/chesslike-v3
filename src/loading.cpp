@@ -284,6 +284,9 @@ void source_file(const char* file, Scene* scene)
             next_line(ptr);
         } else if (**ptr == 0) {
             reached_end = true;
+        } else {
+            printf("Failed to parse file at symbol: %c", **ptr);
+            exit(1);
         }
     }
     flush_ctx(ctx_type, 

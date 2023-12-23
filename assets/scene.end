@@ -1,6 +1,6 @@
 1 (Version number)
 
-# this is a comment
+comment
 MODEL dragon
 PATH assets/default.mod
 
