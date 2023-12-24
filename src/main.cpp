@@ -1144,7 +1144,7 @@ void create_buffer(VkDeviceSize size,
 
 void create_vertex_buffer() 
 {
-    VkDeviceSize buffer_size = model_buffer.vertex_counter * sizeof(Vertex);
+    VkDeviceSize buffer_size = vertex_arena.current;
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1153,12 +1153,8 @@ void create_vertex_buffer()
                   staging_buffer, staging_buffer_memory);
     u8* data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
-    u32 byte_offset = 0;
-    for (u32 i = 0 ; i < model_buffer.staged_models; ++i) {
-        u32 bytes = model_buffer.vtx_queue_len[i] * sizeof(Vertex);
-        memcpy(data + byte_offset, model_buffer.vtx_queue[i], bytes);
-        byte_offset += bytes;
-    }
+    memcpy(data, vertex_arena.base, vertex_arena.current);
+    vertex_arena.reset();
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
                   VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -1172,7 +1168,7 @@ void create_vertex_buffer()
 
 void create_index_buffer() 
 {
-    VkDeviceSize buffer_size = model_buffer.index_counter * sizeof(u32);
+    VkDeviceSize buffer_size = index_arena.current;
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, 
@@ -1183,12 +1179,8 @@ void create_index_buffer()
                   staging_buffer_memory);
     u8* data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
-    u32 byte_offset = 0;
-    for (u32 i = 0; i < model_buffer.staged_models; ++i) {
-        u32 bytes = model_buffer.index_queue_len[i] * sizeof(u32);
-        memcpy(data + byte_offset, model_buffer.index_queue[i], bytes);
-        byte_offset += bytes;
-    }
+    memcpy(data, index_arena.base, index_arena.current);
+    index_arena.reset();
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -1839,7 +1831,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
         vkCmdDrawIndexed(buffer, 
                          model.index_count, 
                          1, 
-                         model.start_index, 
+                         model.index_offset, 
                          model.vertex_offset, 
                          0);
     }
@@ -2073,16 +2065,16 @@ void cleanup()
 
 void init_allocators()
 {
-    asset_arena.init(10000000);
-    scene_arena.init(10000);
-    tmp_arena.init(10000);
+    vertex_arena.init(10000000);
+    index_arena.init(10000000);
+    tmp_arena.init(10000000);
+    asset_arena.init(10000);
 }
 
 i32 main() 
 {
     init_allocators();
     init_window();
-    model_buffer.init();
     scene.init();
     camera.init();
     source_file("assets/scene.end", &scene);

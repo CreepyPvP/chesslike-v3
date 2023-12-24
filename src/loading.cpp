@@ -28,13 +28,7 @@ struct ModelContext
 {
     char* name;
     char* file;
-
-    void* vertex_ptr;
-    u32 vertex_count;
-    u32 vertex_stride;
-    u32* index_ptr;
-    u32 index_count;
-    
+    Model model;
     u8 flags;
 };
 
@@ -144,10 +138,11 @@ i32 read_int(const char** ptr)
     return result;
 }
 
-void load_model(const char* file, ModelContext* model, u8 flags) 
+void load_model(const char* file, ModelContext* model) 
 {
+    tmp_arena.start_scope();
     i32 file_len;
-    char* buffer = read_file(file, &file_len, &asset_arena);
+    char* buffer = read_file(file, &file_len, &tmp_arena);
     if (!buffer)
         exit(1);
 
@@ -156,24 +151,39 @@ void load_model(const char* file, ModelContext* model, u8 flags)
     ++int_ptr;
     u32 index_count = *int_ptr;
     ++int_ptr;
-    u32 vertex_stride = sizeof(Vertex);
-    if (flags & MODEL_FLAG_SKINNED) {
+
+    u32 vertex_stride;
+    u8* vertex_memory;
+    Arena* vertex_acc;
+    Arena* index_acc;
+    if (model->flags & MODEL_FLAG_SKINNED) {
         vertex_stride = sizeof(SkinnedVertex);
+        // TODO: set arena
+        vertex_acc = NULL;
+        index_acc = NULL;
+    } else {
+        vertex_stride = sizeof(Vertex);
+        vertex_acc = &vertex_arena;
+        index_acc = &index_arena;
     }
+
+    model->model.index_count = index_count;
+    model->model.index_offset = index_acc->current / sizeof(u32);
+    model->model.vertex_offset = vertex_acc->current / vertex_stride;
+
+    u32 byte_size = vertex_count * vertex_stride;
+    vertex_memory = (u8*) vertex_acc->alloc(vertex_stride * vertex_count);
     
     // TODO: does little / big endian matter here? Investigate!
-    // TODO: use stride here
-    Vertex* vertex_ptr = (Vertex*) int_ptr;
-    Vertex* vertices =  vertex_ptr;
-    vertex_ptr += vertex_count;
-    int_ptr = (u32*) vertex_ptr;
-    u32* indices = int_ptr;
+    u8* ptr = (u8*) int_ptr;
+    memcpy(vertex_memory, ptr, byte_size);
+    ptr += byte_size;
 
-    model->vertex_count = vertex_count;
-    model->index_count = index_count;
-    model->vertex_ptr = vertices;
-    model->index_ptr = indices;
-    model->vertex_stride = vertex_stride;
+    u32 index_bytes = sizeof(u32) * index_count;
+    u8* index_memory = (u8*) index_acc->alloc(index_bytes);
+    memcpy(index_memory, ptr, index_bytes);
+
+    tmp_arena.end_scope();
 }
 
 void flush_ctx(Context* context, Scene* scene)
@@ -185,14 +195,12 @@ void flush_ctx(Context* context, Scene* scene)
             printf("No path specified for model: %s\n", context->model.name);
             return;
         }
-        load_model(context->model.file, &context->model, context->model.flags);
-        Model* ptr = model_buffer.stage((Vertex*) context->model.vertex_ptr, 
-                                        context->model.vertex_count, 
-                                        context->model.index_ptr, 
-                                        context->model.index_count);
+        load_model(context->model.file, &context->model);
         assert(context->model_count < MAX_MODELS);
+        Model* model = (Model*) asset_arena.alloc(sizeof(Model));
+        *model = context->model.model;
         context->model_names[context->model_count] = context->model.name;
-        context->models[context->model_count] = ptr;
+        context->models[context->model_count] = model;
         context->model_count++;
     } else if (context->type == SKELETON) {
 

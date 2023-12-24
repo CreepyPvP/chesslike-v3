@@ -5,6 +5,8 @@
 
 #include <glm/mat4x4.hpp>
 
+#define ACTOR_COUNT 64
+
 struct Actor
 {
     float x;
@@ -25,9 +27,8 @@ struct Actor
 
 struct Scene 
 {
-    Actor* actors;
+    Actor actors[ACTOR_COUNT];
     u32 actor_count;
-    u32 actor_capacity;
 
     void init();
     void add(Actor actor);

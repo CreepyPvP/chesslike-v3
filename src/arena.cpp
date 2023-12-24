@@ -45,6 +45,7 @@ void Arena::init(u32 bytes)
     reset();
 }
 
-Arena asset_arena;
-Arena scene_arena;
+Arena vertex_arena;
+Arena index_arena;
 Arena tmp_arena;
+Arena asset_arena;
