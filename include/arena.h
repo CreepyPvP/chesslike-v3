@@ -19,8 +19,9 @@ struct Arena
     void init(u32 bytes);
 };
 
-extern Arena vertex_arena;
-extern Arena index_arena;
+// 0 => static meshes, 1 => skinned meshses
+extern Arena vertex_arena[2];
+extern Arena index_arena[2];
 
 extern Arena asset_arena;
 

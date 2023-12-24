@@ -112,10 +112,6 @@ std::vector<VkSemaphore> image_available_semaphores;
 std::vector<VkSemaphore> render_finished_semaphores;
 std::vector<VkFence> in_flight_fences;
 u8 frame_buffer_resized;
-VkBuffer vertex_buffer;
-VkDeviceMemory vertex_buffer_memory;
-VkBuffer index_buffer;
-VkDeviceMemory index_buffer_memory;
 VkDescriptorPool descriptor_pool;
 u32 current_frame;
 VkImage depth_image;
@@ -149,8 +145,12 @@ VkFramebuffer framebuffers[max_frames_in_flight];
 // pipelines
 // 0 => static objects, 1 => skinned objects
 #define PIPELINE_COUNT 2
-VkPipelineLayout pipeline_layouts[2];
-VkPipeline graphics_pipelines[2];
+VkPipelineLayout pipeline_layouts[PIPELINE_COUNT];
+VkPipeline graphics_pipelines[PIPELINE_COUNT];
+VkBuffer vertex_buffer[PIPELINE_COUNT];
+VkDeviceMemory vertex_buffer_memory[PIPELINE_COUNT];
+VkBuffer index_buffer[PIPELINE_COUNT];
+VkDeviceMemory index_buffer_memory[PIPELINE_COUNT];
 
 // taa stuff...
 glm::mat4 proj_view;
@@ -1115,82 +1115,88 @@ void copy_buffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)
 void create_buffer(VkDeviceSize size, 
                   VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags properties, 
-                  VkBuffer &buffer,
-                  VkDeviceMemory &buffer_memory) 
+                  VkBuffer* buffer,
+                  VkDeviceMemory* buffer_memory) 
 {
     VkBufferCreateInfo buffer_info{};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = size;
     buffer_info.usage = usage;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (vkCreateBuffer(device, &buffer_info, NULL, &buffer) != VK_SUCCESS) {
+    if (vkCreateBuffer(device, &buffer_info, NULL, buffer) != VK_SUCCESS) {
         printf("Failed to create vertex buffer\n");
         exit(1);
     }
     VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
+    vkGetBufferMemoryRequirements(device, *buffer, &mem_requirements);
     VkMemoryAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_requirements.size;
     alloc_info.memoryTypeIndex =
         find_memory_type(mem_requirements.memoryTypeBits, properties);
-    if (vkAllocateMemory(device, &alloc_info, NULL, &buffer_memory) !=
+    if (vkAllocateMemory(device, &alloc_info, NULL, buffer_memory) !=
         VK_SUCCESS) {
         printf("Failed to allocate vertex buffer memory\n");
         exit(1);
     }
-    vkBindBufferMemory(device, buffer, buffer_memory, 0);
+    vkBindBufferMemory(device, *buffer, *buffer_memory, 0);
 }
 
-void create_vertex_buffer() 
+void create_vertex_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena) 
 {
-    VkDeviceSize buffer_size = vertex_arena.current;
+    VkDeviceSize buffer_size = arena->current;
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                  staging_buffer, staging_buffer_memory);
+                  &staging_buffer, &staging_buffer_memory);
     u8* data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
-    memcpy(data, vertex_arena.base, vertex_arena.current);
-    vertex_arena.reset();
+    memcpy(data, arena->base, arena->current);
+    arena->reset();
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
                   VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer,
-                  vertex_buffer_memory);
-    copy_buffer(staging_buffer, vertex_buffer, buffer_size);
+                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
+    copy_buffer(staging_buffer, *buffer, buffer_size);
     vkDestroyBuffer(device, staging_buffer, NULL);
     vkFreeMemory(device, staging_buffer_memory, NULL);
 }
 
-void create_index_buffer() 
+void create_index_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena) 
 {
-    VkDeviceSize buffer_size = index_arena.current;
+    VkDeviceSize buffer_size = arena->current;
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, 
                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                  staging_buffer, 
-                  staging_buffer_memory);
+                  &staging_buffer, 
+                  &staging_buffer_memory);
     u8* data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
-    memcpy(data, index_arena.base, index_arena.current);
-    index_arena.reset();
+    memcpy(data, arena->base, arena->current);
+    arena->reset();
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
-            index_buffer, 
-            index_buffer_memory);
-    copy_buffer(staging_buffer, index_buffer, buffer_size);
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
+    copy_buffer(staging_buffer, *buffer, buffer_size);
     vkDestroyBuffer(device, staging_buffer, NULL);
     vkFreeMemory(device, staging_buffer_memory, NULL);
 }
+
+void upload_mesh_data()
+{
+    create_vertex_buffer(vertex_buffer, vertex_buffer_memory, vertex_arena);
+    create_vertex_buffer(vertex_buffer + 1, vertex_buffer_memory + 1, vertex_arena + 1);
+    create_index_buffer(index_buffer, index_buffer_memory, index_arena);
+    create_index_buffer(index_buffer + 1, index_buffer_memory + 1, index_arena + 1);
+}
+
 
 u32 get_align(u32 size, u32 min_align)
 {
@@ -1225,8 +1231,8 @@ void create_uniform_buffer()
         create_buffer(buffer_size, 
                       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                      uniform_buffers[i],
-                      uniform_buffers_memory[i]);
+                      &uniform_buffers[i],
+                      &uniform_buffers_memory[i]);
         vkMapMemory(device, 
                     uniform_buffers_memory[i], 
                     0, 
@@ -1574,8 +1580,8 @@ void create_texture_image()
                   VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 
-                  staging_buffer, 
-                  staging_buffer_memory);
+                  &staging_buffer, 
+                  &staging_buffer_memory);
     void* data = NULL;
     vkMapMemory(device, staging_buffer_memory, 0, image_size, 0, &data);
     memcpy(data, pixels, image_size);
@@ -1661,8 +1667,7 @@ void init_vulkan()
     // ENSURE(create_texture_image(), 20);
     // create_texture_image_view();
     create_texture_sampler();
-    create_vertex_buffer();
-    create_index_buffer();
+    upload_mesh_data();
     create_uniform_buffer();
     create_descriptor_pool();
     create_descriptor_sets();
@@ -1802,10 +1807,10 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     vkCmdBindPipeline(buffer, 
                       VK_PIPELINE_BIND_POINT_GRAPHICS,
                       graphics_pipelines[0]);
-    VkBuffer vertex_buffers[] = {vertex_buffer};
+    VkBuffer vertex_buffers[] = {vertex_buffer[0]};
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
-    vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(buffer, index_buffer[0], 0, VK_INDEX_TYPE_UINT32);
     update_global_uniform();
     for (u32 i = 0; i < scene.actor_count; ++i) {
         update_object_uniform(i, scene.actors + i);
@@ -2043,10 +2048,12 @@ void cleanup()
     vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[0], NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[1], NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[2], NULL);
-    vkDestroyBuffer(device, vertex_buffer, NULL);
-    vkFreeMemory(device, vertex_buffer_memory, NULL);
-    vkDestroyBuffer(device, index_buffer, NULL);
-    vkFreeMemory(device, index_buffer_memory, NULL);
+    for (u32 i = 0; i < PIPELINE_COUNT; ++i) {
+        vkDestroyBuffer(device, vertex_buffer[i], NULL);
+        vkFreeMemory(device, vertex_buffer_memory[i], NULL);
+        vkDestroyBuffer(device, index_buffer[i], NULL);
+        vkFreeMemory(device, index_buffer_memory[i], NULL);
+    }
     for (u32 i = 0; i < max_frames_in_flight; ++i) {
         vkDestroySemaphore(device, image_available_semaphores[i], NULL);
         vkDestroySemaphore(device, render_finished_semaphores[i], NULL);
@@ -2065,8 +2072,10 @@ void cleanup()
 
 void init_allocators()
 {
-    vertex_arena.init(10000000);
-    index_arena.init(10000000);
+    for (u32 i = 0; i < 2; ++i) {
+        vertex_arena[i].init(10000000);
+        index_arena[i].init(10000000);
+    }
     tmp_arena.init(10000000);
     asset_arena.init(10000);
 }

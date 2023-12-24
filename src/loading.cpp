@@ -158,13 +158,12 @@ void load_model(const char* file, ModelContext* model)
     Arena* index_acc;
     if (model->flags & MODEL_FLAG_SKINNED) {
         vertex_stride = sizeof(SkinnedVertex);
-        // TODO: set arena
-        vertex_acc = NULL;
-        index_acc = NULL;
+        vertex_acc = vertex_arena + 1;
+        index_acc = index_arena + 1;
     } else {
         vertex_stride = sizeof(Vertex);
-        vertex_acc = &vertex_arena;
-        index_acc = &index_arena;
+        vertex_acc = vertex_arena;
+        index_acc = index_arena;
     }
 
     model->model.index_count = index_count;
