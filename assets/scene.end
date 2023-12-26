@@ -10,7 +10,7 @@ MODEL cube
 PATH assets/cube.mod
 
 MODEL skinned_cube
-PATH assets/skinned_cube.mod
+PATH assets/rigged_cube.mod
 USE_SKELETON sk_cube
 
 ACTOR dragon
@@ -30,3 +30,8 @@ ROTATION 0.0 0.0 0.0
 SCALE 30.0 30.0 0.1
 MATERIAL 2
 
+ACTOR skinned_cube
+POSITION 0.0 0.0 0.0
+ROTATION 0.0 0.0 0.0
+SCALE 1.0 1.0 1.0
+MATERIAL 0
