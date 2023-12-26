@@ -65,11 +65,13 @@ void end_tmp(Arena* arena)
         if (page_ptr == arena->page) {
             break;
         }
+        page_ptr = arena->pool->pages[page_ptr].next;
     }
 
     arena->page = arena->tmp_page;
     arena->size = arena->tmp_size;
     arena->pool->pages[arena->page].current = arena->tmp_current;
+    arena->pool->pages[arena->page].next = -1;
     arena->tmp_page = -1;
 }
 
@@ -141,6 +143,7 @@ void dispose(Arena* arena)
     i32 page = arena->first;
     while (page > 0) {
         free_page(arena->pool, page);
+        page = arena->pool->pages[page].next;
     }
     arena->first = -1;
     arena->page = -1;
