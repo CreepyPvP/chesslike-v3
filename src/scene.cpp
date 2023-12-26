@@ -3,14 +3,14 @@
 #include "include/scene.h"
 #include "include/arena.h"
 
-void Scene::init()
+void init_scene(Scene* scene)
 {
-    actor_count = 0;
+    scene->actor_count = 0;
 }
 
-void Scene::add(Actor actor)
+void push_actor(Scene* scene, Actor actor)
 {
-    assert(actor_count < ACTOR_COUNT);
-    actors[actor_count] = actor;
-    actor_count++;
+    assert(scene->actor_count < ACTOR_COUNT);
+    scene->actors[scene->actor_count] = actor;
+    scene->actor_count++;
 }

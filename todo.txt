@@ -1,14 +1,14 @@
-Fix timestep
 Animation
     Read bone transforms corretly
-    Render rigged objects
     Apply bone transofrm in shader
     Import animations
     Interpolate
-Memory managment
-    Growing arena
+    Fix timestep
 Fix syncronization
     Fix validation layer warning
     Fix render buffer memory barriers
 Lighting
     Apply ambient lighting
+AA
+    Fix "negative hightlight smearing"
+    Fix flimmering

@@ -14,7 +14,7 @@ struct Vertex
     float nz;
 };
 
-struct SkinnedVertex 
+struct RiggedVertex 
 {
     float x;
     float y;
@@ -31,4 +31,5 @@ struct Model
     u32 index_count;
     u32 index_offset;
     u32 vertex_offset;
+    u8 flags;
 };

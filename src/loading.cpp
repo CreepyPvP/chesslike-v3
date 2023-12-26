@@ -13,8 +13,6 @@
 #define MAX_SKELETONS 64
 #define MAX_BONES 64
 
-#define MODEL_FLAG_SKINNED 1 << 0
-
 
 enum ContextType 
 {
@@ -29,7 +27,6 @@ struct ModelContext
     char* name;
     char* file;
     Model model;
-    u8 flags;
 };
 
 struct SkeletonContext
@@ -159,8 +156,8 @@ void load_model(const char* file, ModelContext* model, Arena* arena)
     u8* vertex_memory;
     Arena* vertex_acc;
     Arena* index_acc;
-    if (model->flags & MODEL_FLAG_SKINNED) {
-        vertex_stride = sizeof(SkinnedVertex);
+    if (model->model.flags & MODEL_FLAG_SKINNED) {
+        vertex_stride = sizeof(RiggedVertex);
         vertex_acc = vertex_arena + 1;
         index_acc = index_arena + 1;
     } else {
@@ -190,7 +187,7 @@ void load_model(const char* file, ModelContext* model, Arena* arena)
 void flush_ctx(Context* context, Scene* scene)
 {
     if (context->type == ACTOR) {
-        scene->add(context->actor);
+        push_actor(scene, context->actor);
     } else if (context->type == MODEL) {
         if (!context->model.file) {
             printf("No path specified for model: %s\n", context->model.name);
@@ -341,7 +338,7 @@ void source_file(const char* file, Scene* scene)
                 printf("USE_SKELETON has to be used in Model context\n");
                 exit(1);
             }
-            context.model.flags |= MODEL_FLAG_SKINNED;
+            context.model.model.flags |= MODEL_FLAG_SKINNED;
             skip_whitespaces(ptr);
             char* name = read_ident(ptr, &context.arena);
             next_line(ptr);

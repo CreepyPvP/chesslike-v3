@@ -185,15 +185,6 @@ static bool is_complete(QueueFamilyIndices* self)
     return self->flags & (QUEUE_FAMILY_GRAPHICS | QUEUE_FAMILY_PRESENT);
 }
 
-static VkVertexInputBindingDescription bind_desc() 
-{
-    VkVertexInputBindingDescription desc{};
-    desc.binding = 0;
-    desc.stride = sizeof(Vertex);
-    desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    return desc;
-}
-
 void init_window() 
 {
     glfwInit();
@@ -759,6 +750,7 @@ void create_graphics_pipeline(const char* vert_file,
                               const char* frag_file,
                               VkVertexInputAttributeDescription* attr_desc,
                               u32 attr_count,
+                              VkVertexInputBindingDescription* bind_desc,
                               VkPipelineLayout* layout,
                               VkPipeline* pipeline)
 {
@@ -794,12 +786,11 @@ void create_graphics_pipeline(const char* vert_file,
     VkPipelineDynamicStateCreateInfo dynamic_state{};
     dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamic_state.dynamicStateCount = 0;
-    VkVertexInputBindingDescription binding_description = bind_desc();
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
     vertex_input_info.sType =
         VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertex_input_info.vertexBindingDescriptionCount = 1;
-    vertex_input_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_info.pVertexBindingDescriptions = bind_desc;
     vertex_input_info.vertexAttributeDescriptionCount = attr_count;
     vertex_input_info.pVertexAttributeDescriptions = attr_desc;
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
@@ -897,6 +888,16 @@ void create_graphics_pipeline(const char* vert_file,
 
 void create_pipelines() 
 {
+    VkVertexInputBindingDescription static_bind_desc{};
+    static_bind_desc.binding = 0;
+    static_bind_desc.stride = sizeof(Vertex);
+    static_bind_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    VkVertexInputBindingDescription rigged_bind_desc{};
+    rigged_bind_desc.binding = 0;
+    rigged_bind_desc.stride = sizeof(RiggedVertex);
+    rigged_bind_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
     VkVertexInputAttributeDescription static_attr[2];
     static_attr[0].binding = 0;
     static_attr[0].location = 0;
@@ -907,35 +908,37 @@ void create_pipelines()
     static_attr[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     static_attr[1].offset = offsetof(Vertex, nx);
 
-    VkVertexInputAttributeDescription skinned_attr[4];
-    skinned_attr[0].binding = 0;
-    skinned_attr[0].location = 0;
-    skinned_attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    skinned_attr[0].offset = offsetof(SkinnedVertex, x);
-    skinned_attr[1].binding = 0;
-    skinned_attr[1].location = 1;
-    skinned_attr[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    skinned_attr[1].offset = offsetof(SkinnedVertex, nx);
-    skinned_attr[2].binding = 0;
-    skinned_attr[2].location = 2;
-    skinned_attr[2].format = VK_FORMAT_R32G32B32_SINT;
-    skinned_attr[2].offset = offsetof(SkinnedVertex, bones);
-    skinned_attr[3].binding = 0;
-    skinned_attr[3].location = 3;
-    skinned_attr[3].format = VK_FORMAT_R32G32B32_SFLOAT;
-    skinned_attr[3].offset = offsetof(SkinnedVertex, weights);
+    VkVertexInputAttributeDescription rigged_attr[4];
+    rigged_attr[0].binding = 0;
+    rigged_attr[0].location = 0;
+    rigged_attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    rigged_attr[0].offset = offsetof(RiggedVertex, x);
+    rigged_attr[1].binding = 0;
+    rigged_attr[1].location = 1;
+    rigged_attr[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    rigged_attr[1].offset = offsetof(RiggedVertex, nx);
+    rigged_attr[2].binding = 0;
+    rigged_attr[2].location = 2;
+    rigged_attr[2].format = VK_FORMAT_R32G32B32_SINT;
+    rigged_attr[2].offset = offsetof(RiggedVertex, bones);
+    rigged_attr[3].binding = 0;
+    rigged_attr[3].location = 3;
+    rigged_attr[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+    rigged_attr[3].offset = offsetof(RiggedVertex, weights);
 
     create_graphics_pipeline("shader/staticv.spv",
                              "shader/pbr_frag.spv",
                              static_attr,
                              2,
+                             &static_bind_desc,
                              pipeline_layouts,
                              graphics_pipelines);
 
     create_graphics_pipeline("shader/skinnedv.spv",
                              "shader/pbr_frag.spv",
-                             skinned_attr,
+                             rigged_attr,
                              4,
+                             &rigged_bind_desc,
                              pipeline_layouts + 1,
                              graphics_pipelines + 1);
 }
@@ -1203,7 +1206,7 @@ u32 get_align(u32 size, u32 min_align)
     if (min_align > 0) {
         return (size + min_align - 1) & ~(min_align - 1);
     }
-    size;
+    return size;
 }
 
 void create_uniform_buffer() 
@@ -1801,45 +1804,52 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     render_pass_info.clearValueCount = 2;
     render_pass_info.pClearValues = clear_values;
 
-    vkCmdBeginRenderPass(buffer, 
-                         &render_pass_info, 
-                         VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(buffer, 
-                      VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      graphics_pipelines[0]);
-    VkBuffer vertex_buffers[] = {vertex_buffer[0]};
+    vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[0]);
+    VkBuffer static_vertex_buffers[] = {vertex_buffer[0]};
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
+    vkCmdBindVertexBuffers(buffer, 0, 1, static_vertex_buffers, offsets);
     vkCmdBindIndexBuffer(buffer, index_buffer[0], 0, VK_INDEX_TYPE_UINT32);
     update_global_uniform();
     for (u32 i = 0; i < scene.actor_count; ++i) {
         update_object_uniform(i, scene.actors + i);
     }
     flush_uniform_buffer();
-    vkCmdBindDescriptorSets(buffer, 
-                            VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                            pipeline_layouts[0],
-                            0,
-                            1, descriptor_sets + 0 + current_frame * 3,
-                            0, NULL);
+    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,  pipeline_layouts[0], 
+                            0, 1, descriptor_sets + 0 + current_frame * 3, 0, NULL);
     for (u32 i = 0; i < scene.actor_count; ++i) {
-        u32 dynamic_offsets[] = {
-            scene.actors[i].material * dynamic_align[1], i * dynamic_align[2]
-        };
+        if (scene.actors[i].model->flags & MODEL_FLAG_SKINNED) {
+            continue;
+        }
+
+        u32 dynamic_offsets[] = { scene.actors[i].material * dynamic_align[1], i * dynamic_align[2] };
         Model model = *(scene.actors[i].model);
-        vkCmdBindDescriptorSets(buffer, 
-                                VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                                pipeline_layouts[0],
-                                1,
-                                2, descriptor_sets + 1 + current_frame * 3,
-                                2, dynamic_offsets);
-        vkCmdDrawIndexed(buffer, 
-                         model.index_count, 
-                         1, 
-                         model.index_offset, 
-                         model.vertex_offset, 
-                         0);
+        vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts[0], 1,
+                                2, descriptor_sets + 1 + current_frame * 3, 2, dynamic_offsets);
+        vkCmdDrawIndexed(buffer, model.index_count, 1, model.index_offset, 
+                         model.vertex_offset, 0);
     }
+
+    vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[1]);
+    VkBuffer rigged_vertex_buffers[] = {vertex_buffer[1]};
+    vkCmdBindVertexBuffers(buffer, 0, 1, rigged_vertex_buffers, offsets);
+    vkCmdBindIndexBuffer(buffer, index_buffer[1], 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,  pipeline_layouts[1], 
+                            0, 1, descriptor_sets + 0 + current_frame * 3, 0, NULL);
+    for (u32 i = 0; i < scene.actor_count; ++i) {
+        if ((scene.actors[i].model->flags & MODEL_FLAG_SKINNED) == 0) {
+            continue;
+        }
+
+        u32 dynamic_offsets[] = { scene.actors[i].material * dynamic_align[1], i * dynamic_align[2] };
+        Model model = *(scene.actors[i].model);
+        vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts[0], 1,
+                                2, descriptor_sets + 1 + current_frame * 3, 2, dynamic_offsets);
+        vkCmdDrawIndexed(buffer, model.index_count, 1, model.index_offset, 
+                         model.vertex_offset, 0);
+    }
+
     vkCmdEndRenderPass(buffer);
 
     // TODO: clean this up
@@ -2082,7 +2092,7 @@ i32 main()
 {
     init_allocators();
     init_window();
-    scene.init();
+    init_scene(&scene);
     camera.init();
     source_file("assets/scene.end", &scene);
     init_vulkan();

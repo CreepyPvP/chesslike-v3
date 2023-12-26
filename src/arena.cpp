@@ -6,6 +6,7 @@
 
 #include <include/game_math.h>
 
+// NOTE: I regret all of this :(
 void init_pool(MemoryPool* pool)
 {
     pool->free_count = MEMORY_PAGE_COUNT;

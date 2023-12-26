@@ -5,7 +5,7 @@
 
 #include <glm/mat4x4.hpp>
 
-#define ACTOR_COUNT 64
+#define ACTOR_COUNT 16
 
 struct Actor
 {
@@ -29,7 +29,7 @@ struct Scene
 {
     Actor actors[ACTOR_COUNT];
     u32 actor_count;
-
-    void init();
-    void add(Actor actor);
 };
+
+void init_scene(Scene* scene);
+void push_actor(Scene* scene, Actor actor);

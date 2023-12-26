@@ -19,6 +19,8 @@ layout(binding = 0, set = 2) uniform ObjectUniform
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
+layout(location = 2) in ivec3 in_bone_ids;
+layout(location = 3) in vec3 in_bone_weights;
 
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out vec3 out_pos;
@@ -34,5 +36,4 @@ void main()
     // taa stuff...
     vec4 prev_pos = object.prev_mvp * vec4(in_position, 1.0);
     out_prev_screen_pos = prev_pos.xyw;
-
 }
