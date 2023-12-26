@@ -19,7 +19,7 @@ char* read_file(const char* file, i32* flen, Arena* arena)
     i32 len = ftell(fptr);
     char* buf = NULL;
     if (arena) {
-        buf = (char*) arena->alloc(len + 1);
+        buf = (char*) push_size(arena, len + 1);
     } else {
         buf = (char*) malloc(len + 1);
     }

@@ -11,6 +11,7 @@ struct MemoryPage
     u8* memory;
     u32 next;
     u32 size;
+    u32 current;
 };
 
 struct MemoryPool 
@@ -25,7 +26,12 @@ struct Arena
     MemoryPool* pool;
     i32 first;
     i32 page;
-    u32 current;
+    u32 size;
+
+    // On end_tmp() arena get reset to these values
+    i32 tmp_page;
+    u32 tmp_size;
+    u32 tmp_current;
 };
 
 void init_pool(MemoryPool* pool);
@@ -34,12 +40,14 @@ void free_page(MemoryPool* pool, i32 page_id);
 
 void init_arena(Arena* arena, MemoryPool* pool);
 void* push_size(Arena* arena, u32 size);
+void begin_tmp(Arena* arena);
+void end_tmp(Arena* arena);
 void dispose(Arena* arena);
+void copy(Arena* arena, void* dst);
 
 // 0 => static meshes, 1 => skinned meshses
 extern Arena vertex_arena[2];
 extern Arena index_arena[2];
-
 extern Arena asset_arena;
 
-extern Arena tmp_arena;
+extern MemoryPool pool;

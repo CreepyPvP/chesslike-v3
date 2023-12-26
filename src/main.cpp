@@ -1144,7 +1144,7 @@ void create_buffer(VkDeviceSize size,
 
 void create_vertex_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena) 
 {
-    VkDeviceSize buffer_size = arena->current;
+    VkDeviceSize buffer_size = arena->size;
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -1153,8 +1153,8 @@ void create_vertex_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena
                   &staging_buffer, &staging_buffer_memory);
     u8* data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
-    memcpy(data, arena->base, arena->current);
-    arena->reset();
+    copy(arena, data);
+    dispose(arena);
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
                   VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -1167,7 +1167,7 @@ void create_vertex_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena
 
 void create_index_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena) 
 {
-    VkDeviceSize buffer_size = arena->current;
+    VkDeviceSize buffer_size = arena->size;
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
     create_buffer(buffer_size, 
@@ -1178,8 +1178,8 @@ void create_index_buffer(VkBuffer* buffer, VkDeviceMemory* memory, Arena* arena)
                   &staging_buffer_memory);
     u8* data;
     vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, (void**) &data);
-    memcpy(data, arena->base, arena->current);
-    arena->reset();
+    copy(arena, data);
+    dispose(arena);
     vkUnmapMemory(device, staging_buffer_memory);
     create_buffer(buffer_size,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
@@ -2066,18 +2066,16 @@ void cleanup()
     vkDestroyInstance(instance, NULL);
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    asset_arena.dispose();
 }
 
 void init_allocators()
 {
-    for (u32 i = 0; i < 2; ++i) {
-        vertex_arena[i].init(10000000);
-        index_arena[i].init(10000000);
-    }
-    tmp_arena.init(10000000);
-    asset_arena.init(10000);
+    init_pool(&pool);
+    init_arena(vertex_arena, &pool);
+    init_arena(vertex_arena + 1, &pool);
+    init_arena(index_arena, &pool);
+    init_arena(index_arena + 1, &pool);
+    init_arena(&asset_arena, &pool);
 }
 
 i32 main() 

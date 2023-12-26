@@ -54,6 +54,8 @@ struct Context
 
     char* skeleton_names[MAX_SKELETONS];
     u32 skeleton_count;
+
+    Arena arena;
 };
 
 // returns true if ptr starts with prefix. 
@@ -104,7 +106,7 @@ bool is_char(char c)
         c == '.';
 }
 
-char* read_ident(const char** ptr)
+char* read_ident(const char** ptr, Arena* arena)
 {
     const char* start = *ptr;
     i32 len = 0;
@@ -112,7 +114,7 @@ char* read_ident(const char** ptr)
         (*ptr)++;
         len++;
     }
-    char* str = (char*) tmp_arena.alloc(len + 1);
+    char* str = (char*) push_size(arena, len + 1);
     for (i32 i = 0; i < len; ++i) {
         str[i] = start[i];
     }
@@ -138,11 +140,12 @@ i32 read_int(const char** ptr)
     return result;
 }
 
-void load_model(const char* file, ModelContext* model) 
+void load_model(const char* file, ModelContext* model, Arena* arena) 
 {
-    tmp_arena.start_scope();
+    begin_tmp(arena);
     i32 file_len;
-    char* buffer = read_file(file, &file_len, &tmp_arena);
+    // TODO: start new arena scope here
+    char* buffer = read_file(file, &file_len, arena);
     if (!buffer)
         exit(1);
 
@@ -167,11 +170,11 @@ void load_model(const char* file, ModelContext* model)
     }
 
     model->model.index_count = index_count;
-    model->model.index_offset = index_acc->current / sizeof(u32);
-    model->model.vertex_offset = vertex_acc->current / vertex_stride;
+    model->model.index_offset = index_acc->size / sizeof(u32);
+    model->model.vertex_offset = vertex_acc->size / vertex_stride;
 
     u32 byte_size = vertex_count * vertex_stride;
-    vertex_memory = (u8*) vertex_acc->alloc(vertex_stride * vertex_count);
+    vertex_memory = (u8*) push_size(vertex_acc, vertex_stride * vertex_count);
     
     // TODO: does little / big endian matter here? Investigate!
     u8* ptr = (u8*) int_ptr;
@@ -179,10 +182,9 @@ void load_model(const char* file, ModelContext* model)
     ptr += byte_size;
 
     u32 index_bytes = sizeof(u32) * index_count;
-    u8* index_memory = (u8*) index_acc->alloc(index_bytes);
+    u8* index_memory = (u8*) push_size(index_acc, index_bytes);
     memcpy(index_memory, ptr, index_bytes);
-
-    tmp_arena.end_scope();
+    end_tmp(arena);
 }
 
 void flush_ctx(Context* context, Scene* scene)
@@ -194,9 +196,9 @@ void flush_ctx(Context* context, Scene* scene)
             printf("No path specified for model: %s\n", context->model.name);
             return;
         }
-        load_model(context->model.file, &context->model);
+        load_model(context->model.file, &context->model, &context->arena);
         assert(context->model_count < MAX_MODELS);
-        Model* model = (Model*) asset_arena.alloc(sizeof(Model));
+        Model* model = (Model*) push_size(&asset_arena, sizeof(Model));
         *model = context->model.model;
         context->model_names[context->model_count] = context->model.name;
         context->models[context->model_count] = model;
@@ -209,8 +211,9 @@ void flush_ctx(Context* context, Scene* scene)
 void source_file(const char* file, Scene* scene) 
 {
     i32 len;
-    tmp_arena.start_scope();
-    const char* content = read_file(file, &len, &tmp_arena);
+    Context context{};
+    init_arena(&context.arena, &pool);
+    const char* content = read_file(file, &len, &context.arena);
     if (!content) {
         printf("Failed to load scene: %s\n", file);
         exit(1);
@@ -218,7 +221,6 @@ void source_file(const char* file, Scene* scene)
     printf("Parsing scene: %s\n", file);
     const char** ptr = &content;
     bool reached_end = false;
-    Context context{};
 
     i32 version = read_version(&content);
     while (!reached_end) {
@@ -226,7 +228,7 @@ void source_file(const char* file, Scene* scene)
             flush_ctx(&context, scene);
 
             skip_whitespaces(ptr);
-            char* name = read_ident(ptr);
+            char* name = read_ident(ptr, &context.arena);
             next_line(ptr);
             context.type = MODEL;
             context.model = ModelContext{};
@@ -235,7 +237,7 @@ void source_file(const char* file, Scene* scene)
             flush_ctx(&context, scene);
 
             skip_whitespaces(ptr);
-            char* model = read_ident(ptr);
+            char* model = read_ident(ptr, &context.arena);
             next_line(ptr);
             context.type = ACTOR;
             context.actor = {};
@@ -253,7 +255,7 @@ void source_file(const char* file, Scene* scene)
             }
         } else if (prefix("PATH", ptr)) {
             skip_whitespaces(ptr);
-            char* path = read_ident(ptr);
+            char* path = read_ident(ptr, &context.arena);
             next_line(ptr);
             if (context.type == MODEL) {
                 context.model.file = path;
@@ -312,7 +314,7 @@ void source_file(const char* file, Scene* scene)
         } else if (prefix("SKELETON", ptr)) {
             flush_ctx(&context, scene);
             skip_whitespaces(ptr);
-            char* name = read_ident(ptr);
+            char* name = read_ident(ptr, &context.arena);
             context.type = SKELETON;
             context.skeleton = {};
             assert(context.skeleton_count < MAX_SKELETONS);
@@ -325,7 +327,7 @@ void source_file(const char* file, Scene* scene)
                 exit(1);
             }
             assert(context.skeleton.bone_count < MAX_BONES);
-            char* name = read_ident(ptr);
+            char* name = read_ident(ptr, &context.arena);
             float* matrix_value = (float*) (context.skeleton.bones + context.skeleton.bone_count);
             for (u32 i = 0; i < 16; ++i) {
                 skip_whitespaces(ptr);
@@ -341,7 +343,7 @@ void source_file(const char* file, Scene* scene)
             }
             context.model.flags |= MODEL_FLAG_SKINNED;
             skip_whitespaces(ptr);
-            char* name = read_ident(ptr);
+            char* name = read_ident(ptr, &context.arena);
             next_line(ptr);
         } else if (prefix("#", ptr)) {
             next_line(ptr);
@@ -353,5 +355,5 @@ void source_file(const char* file, Scene* scene)
         }
     }
     flush_ctx(&context, scene);
-    tmp_arena.end_scope();
+    dispose(&context.arena);
 }
