@@ -5,10 +5,10 @@
 #include "include/utils.h"
 #include "include/assets.h"
 #include "include/arena.h"
-#include "include/scene.h"
 #include "include/loading.h"
 #include "include/camera.h"
 #include "include/game_math.h"
+#include "include/render_queue.h"
 
 #include <math.h>
 #include <limits.h>
@@ -17,8 +17,6 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <vector>
-#include <glm/mat4x4.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
@@ -119,6 +117,9 @@ u32 non_coherent_atom_size;
 u32 range_count = 0;
 u32 object_offset;
 u32 material_offset;
+
+u32 uniform_object_alloc;
+
 VkMappedMemoryRange ranges[UNIFORM_BUF_OBJECT + UNIFORM_BUF_MATERIAL + 1];
 VkDescriptorSet descriptor_sets[max_frames_in_flight * 3];
 VkDescriptorSetLayout descriptor_set_layouts[3];
@@ -142,6 +143,8 @@ VkBuffer vertex_buffer[PIPELINE_COUNT];
 VkDeviceMemory vertex_buffer_memory[PIPELINE_COUNT];
 VkBuffer index_buffer[PIPELINE_COUNT];
 VkDeviceMemory index_buffer_memory[PIPELINE_COUNT];
+
+RenderQueue render_queue;
 
 // taa stuff...
 glm::mat4 proj_view;
@@ -1571,20 +1574,17 @@ void update_global_uniform()
     proj_view = ubo.proj_view;
 }
 
-void update_object_uniform(u32 actor_index, Actor* actor) 
+u32 alloc_object_uniform(glm::mat4* model, glm::mat4* prev_mvp) 
 {
+    assert(uniform_object_alloc < UNIFORM_BUF_OBJECT);
+    u32 slot = uniform_object_alloc++;
     float time = glfwGetTime();
     ObjectUniform ubo;
-    ubo.model = glm::mat4(1.0);
-    ubo.model = glm::translate(ubo.model, glm::vec3(actor->x, actor->y, actor->z));
-    ubo.model = glm::rotate(ubo.model, glm::radians(actor->rot_x), glm::vec3(1.0f, 0.0f, 0.0f));
-    ubo.model = glm::rotate(ubo.model, glm::radians(actor->rot_y), glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.model = glm::rotate(ubo.model, glm::radians(actor->rot_z), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.model = glm::scale(ubo.model, glm::vec3(actor->scale_x, actor->scale_y, actor->scale_z));
-    ubo.prev_mvp = actor->prev_mvp;
-    u32 offset = object_offset + dynamic_align[2] * actor_index;
+    ubo.prev_mvp = *prev_mvp;
+    ubo.model = *model;
+    u32 offset = object_offset + dynamic_align[2] * slot;
     update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform), current_frame);
-    actor->prev_mvp = proj_view * ubo.model;
+    return slot;
 }
 
 void init_materials()
@@ -1623,7 +1623,49 @@ void init_materials()
     }
 }
 
-void record_command_buffer(VkCommandBuffer buffer, u32 image_index, Scene* scene) 
+void draw_object(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 material)
+{
+    u32 slot = alloc_object_uniform(transform, prev_mvp);
+
+    Message message;
+    message.pipeline = 0;
+    message.object.uniform_slot = slot;
+    message.object.material = material;
+    message.object.vertex_offset = model->vertex_offset;
+    message.object.index_count = model->index_count;
+    message.object.index_offset = model->index_offset;
+    assert(render_queue.message_count < MAX_MESSAGES);
+    render_queue.messages[render_queue.message_count++] = message;
+}
+
+void bind_pipeline(VkCommandBuffer buffer, u32 pipeline)
+{
+    vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[pipeline]);
+    VkBuffer vertex_buffers[] = {vertex_buffer[pipeline]};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
+    vkCmdBindIndexBuffer(buffer, index_buffer[pipeline], 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,  pipeline_layouts[pipeline], 
+                            0, 1, descriptor_sets + 0 + current_frame * 3, 0, NULL);
+}
+
+void draw_entry(VkCommandBuffer buffer, Message message)
+{
+    u32 material = message.object.material;
+    u32 uniform_slot = message.object.uniform_slot;
+    u32 index_count = message.object.index_count;
+    u32 index_offset = message.object.index_offset;
+    u32 vertex_offset = message.object.vertex_offset;
+
+    // Start 1
+    u32 dynamic_offsets[] = { material * dynamic_align[1], uniform_slot * dynamic_align[2] };
+    // TODO: pipeline_layouts[0]?
+    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts[0], 1,
+                            2, descriptor_sets + 1 + current_frame * 3, 2, dynamic_offsets);
+    vkCmdDrawIndexed(buffer, index_count, 1, index_offset, vertex_offset, 0);
+}
+
+void record_command_buffer(VkCommandBuffer buffer, u32 image_index) 
 {
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1646,52 +1688,13 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index, Scene* scene
     render_pass_info.pClearValues = clear_values;
 
     vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-
-    vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[0]);
-    VkBuffer static_vertex_buffers[] = {vertex_buffer[0]};
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(buffer, 0, 1, static_vertex_buffers, offsets);
-    vkCmdBindIndexBuffer(buffer, index_buffer[0], 0, VK_INDEX_TYPE_UINT32);
-    update_global_uniform();
-    for (u32 i = 0; i < scene->actor_count; ++i) {
-        update_object_uniform(i, scene->actors + i);
+    
+    for (u32 i = 0; i < render_queue.message_count; ++i) {
+        Message message = render_queue.messages[i];
+        bind_pipeline(buffer, message.pipeline);
+        draw_entry(buffer, message);
     }
-    flush_uniform_buffer();
-    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,  pipeline_layouts[0], 
-                            0, 1, descriptor_sets + 0 + current_frame * 3, 0, NULL);
-    for (u32 i = 0; i < scene->actor_count; ++i) {
-        if (scene->actors[i].model->flags & MODEL_FLAG_SKINNED) {
-            continue;
-        }
-
-        u32 dynamic_offsets[] = { scene->actors[i].material * dynamic_align[1], i * dynamic_align[2] };
-        Model model = *(scene->actors[i].model);
-        vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts[0], 1,
-                                2, descriptor_sets + 1 + current_frame * 3, 2, dynamic_offsets);
-        vkCmdDrawIndexed(buffer, model.index_count, 1, model.index_offset, 
-                         model.vertex_offset, 0);
-    }
-
-    // TODO: clean this up. Its getting real ugly
-    vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[1]);
-    VkBuffer rigged_vertex_buffers[] = {vertex_buffer[1]};
-    vkCmdBindVertexBuffers(buffer, 0, 1, rigged_vertex_buffers, offsets);
-    vkCmdBindIndexBuffer(buffer, index_buffer[1], 0, VK_INDEX_TYPE_UINT32);
-    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,  pipeline_layouts[1], 
-                            0, 1, descriptor_sets + 0 + current_frame * 3, 0, NULL);
-    for (u32 i = 0; i < scene->actor_count; ++i) {
-        if ((scene->actors[i].model->flags & MODEL_FLAG_SKINNED) == 0) {
-            continue;
-        }
-
-        u32 dynamic_offsets[] = { scene->actors[i].material * dynamic_align[1], i * dynamic_align[2] };
-        Model model = *(scene->actors[i].model);
-        vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts[0], 1,
-                                2, descriptor_sets + 1 + current_frame * 3, 2, dynamic_offsets);
-        vkCmdDrawIndexed(buffer, model.index_count, 1, model.index_offset, 
-                         model.vertex_offset, 0);
-    }
-
+    
     vkCmdEndRenderPass(buffer);
 
     // TODO: clean this up
@@ -1790,7 +1793,13 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index, Scene* scene
     return;
 }
 
-void draw_frame(GLFWwindow* window, Scene* scene) 
+void start_frame()
+{
+    uniform_object_alloc = 0;
+    render_queue.message_count = 0;
+}
+
+void end_frame(GLFWwindow* window) 
 {
     vkWaitForFences(device, 
                     1, 
@@ -1813,7 +1822,11 @@ void draw_frame(GLFWwindow* window, Scene* scene)
     }
     vkResetFences(device, 1, &in_flight_fences[current_frame]);
     vkResetCommandBuffer(command_buffers[current_frame], 0);
-    record_command_buffer(command_buffers[current_frame], image_index, scene);
+
+    update_global_uniform();
+    flush_uniform_buffer();
+    
+    record_command_buffer(command_buffers[current_frame], image_index);
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     VkSemaphore wait_semaphores[] = {

@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <vector>
+#include <glm/mat4x4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "include/utils.h"
 #include "include/assets.h"
@@ -70,6 +72,18 @@ void init_allocators()
     init_arena(&asset_arena, &pool);
 }
 
+glm::mat4 get_actor_transform(Actor* actor)
+{
+    glm::mat4 res;
+    res = glm::mat4(1.0);
+    res = glm::translate(res, glm::vec3(actor->x, actor->y, actor->z));
+    res = glm::rotate(res, glm::radians(actor->rot_x), glm::vec3(1.0f, 0.0f, 0.0f));
+    res = glm::rotate(res, glm::radians(actor->rot_y), glm::vec3(0.0f, 1.0f, 0.0f));
+    res = glm::rotate(res, glm::radians(actor->rot_z), glm::vec3(0.0f, 0.0f, 1.0f));
+    res = glm::scale(res, glm::vec3(actor->scale_x, actor->scale_y, actor->scale_z));
+    return res;
+}
+
 i32 main() 
 {
     init_allocators();
@@ -96,7 +110,20 @@ i32 main()
 
         camera.process_key_input(window, delta);
 
-        draw_frame(window, &scene);
+        start_frame();
+
+        for (u32 i = 0; i < scene.actor_count; ++i) {
+            Actor actor = scene.actors[i];
+            if (actor.model->flags & MODEL_FLAG_SKINNED) {
+                // draw_rigged();
+            } else {
+                glm::mat4 transform = get_actor_transform(&actor);
+                draw_object(&transform, &transform, actor.model, actor.material);
+                // TODO: set actor prev_mvp
+            }
+        }
+
+        end_frame(window);
 
         // current_frame = (current_frame + 1) % max_frames_in_flight;
         glfwPollEvents();
