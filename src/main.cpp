@@ -30,12 +30,18 @@ float last_mouse_pos_y;
 
 bool frame_buffer_resized = false;
 
+glm::mat4 proj;
+
 Scene scene;
 
 
 void resize_callback(GLFWwindow *window, i32 width, i32 height) 
 {
     frame_buffer_resized = true;
+    proj = glm::perspective(glm::radians(45.0f), 
+                            (float) width / (float) height, 
+                            0.1f, 1000.0f);
+    proj[1][1] *= -1;
 }
 
 void mouse_callback(GLFWwindow* window, double pos_x, double pos_y) 
@@ -95,6 +101,11 @@ i32 main()
     init_vulkan(window);
     init_materials();
 
+    proj = glm::perspective(glm::radians(45.0f), 
+                            (float) width / (float) height, 
+                            0.1f, 1000.0f);
+    proj[1][1] *= -1;
+
     // current_frame = 0;
     float time_last_frame = glfwGetTime();
     float delta = 0;
@@ -110,7 +121,12 @@ i32 main()
 
         camera.process_key_input(window, delta);
 
+        glm::mat4 view = glm::lookAt(camera.pos, camera.pos + camera.front, glm::vec3(0.0, 0.0, 1.0));
+        glm::mat4 proj_view = proj * view;
+
         start_frame();
+
+        update_global_uniform(camera.pos, proj_view);
 
         for (u32 i = 0; i < scene.actor_count; ++i) {
             Actor actor = scene.actors[i];
@@ -118,8 +134,8 @@ i32 main()
                 // draw_rigged();
             } else {
                 glm::mat4 transform = get_actor_transform(&actor);
-                draw_object(&transform, &transform, actor.model, actor.material);
-                // TODO: set actor prev_mvp
+                draw_object(&transform, &actor.prev_mvp, actor.model, actor.material);
+                scene.actors[i].prev_mvp = proj_view * transform;
             }
         }
 

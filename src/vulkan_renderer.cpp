@@ -6,7 +6,6 @@
 #include "include/assets.h"
 #include "include/arena.h"
 #include "include/loading.h"
-#include "include/camera.h"
 #include "include/game_math.h"
 #include "include/render_queue.h"
 
@@ -1555,23 +1554,15 @@ void update_uniform_memory(u8* memory, u32 offset, u32 size, u32 current_frame)
     ++range_count;
 }
 
-void update_global_uniform()
+void update_global_uniform(glm::vec3 camera_pos, glm::mat4 proj_view)
 {
     GlobalUniform ubo;
-    glm::mat4 view = glm::lookAt(camera.pos, camera.pos + camera.front, glm::vec3(0.0, 0.0, 1.0));
-    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 
-                                      (float) swap_chain_extent.width / 
-                                      (float) swap_chain_extent.height, 
-                                      0.1f, 
-                                      1000.0f);
-    proj[1][1] *= -1;
-    ubo.proj_view = proj * view;
-    ubo.camera_pos = camera.pos;
+    ubo.camera_pos = camera_pos;
+    ubo.proj_view = proj_view;
     ubo.jitter_index = jitter_index;
     ubo.screen_size = glm::vec2(swap_chain_extent.width, swap_chain_extent.height);
     jitter_index = (jitter_index + 1) % 5;
     update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
-    proj_view = ubo.proj_view;
 }
 
 u32 alloc_object_uniform(glm::mat4* model, glm::mat4* prev_mvp) 
@@ -1823,7 +1814,6 @@ void end_frame(GLFWwindow* window)
     vkResetFences(device, 1, &in_flight_fences[current_frame]);
     vkResetCommandBuffer(command_buffers[current_frame], 0);
 
-    update_global_uniform();
     flush_uniform_buffer();
     
     record_command_buffer(command_buffers[current_frame], image_index);
