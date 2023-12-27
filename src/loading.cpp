@@ -29,9 +29,21 @@ struct ModelContext
     Model model;
 };
 
+struct Bone 
+{
+    float x;
+    float y;
+    float z;
+
+    float r;
+    float i;
+    float j;
+    float k;
+};
+
 struct SkeletonContext
 {
-    glm::mat4 bones[MAX_BONES];
+    Bone bones[MAX_BONES];
     u32 bone_count;
 };
 
@@ -325,12 +337,17 @@ void source_file(const char* file, Scene* scene)
             }
             assert(context.skeleton.bone_count < MAX_BONES);
             char* name = read_ident(ptr, &context.arena);
-            float* matrix_value = (float*) (context.skeleton.bones + context.skeleton.bone_count);
-            for (u32 i = 0; i < 16; ++i) {
-                skip_whitespaces(ptr);
-                *matrix_value = read_float(ptr);
-                matrix_value++;
-            }
+
+            Bone bone;
+            bone.r = read_float(ptr);
+            bone.i = read_float(ptr);
+            bone.j = read_float(ptr);
+            bone.k = read_float(ptr);
+            bone.x = read_float(ptr);
+            bone.y = read_float(ptr);
+            bone.z = read_float(ptr);
+            context.skeleton.bones[context.skeleton.bone_count] = bone;
+
             context.skeleton.bone_count++;
             next_line(ptr);
         } else if (prefix("USE_SKELETON", ptr)) {

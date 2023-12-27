@@ -1831,6 +1831,7 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
                          model.vertex_offset, 0);
     }
 
+    // TODO: clean this up. Its getting real ugly
     vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[1]);
     VkBuffer rigged_vertex_buffers[] = {vertex_buffer[1]};
     vkCmdBindVertexBuffers(buffer, 0, 1, rigged_vertex_buffers, offsets);

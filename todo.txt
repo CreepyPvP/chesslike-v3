@@ -1,14 +1,23 @@
 Animation
     Read bone transforms corretly
+    Write bone transform to uniform
     Apply bone transofrm in shader
     Import animations
     Interpolate
     Fix timestep
+
 Fix syncronization
     Fix validation layer warning
     Fix render buffer memory barriers
+
 Lighting
     Apply ambient lighting
+
 AA
     Fix "negative hightlight smearing"
     Fix flimmering
+
+Memory Managment
+    Vulkan allocator
+
+Some form of vulkan abstraction
