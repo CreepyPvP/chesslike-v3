@@ -21,3 +21,6 @@ Memory Managment
     Vulkan allocator
 
 Some form of vulkan abstraction
+
+PBR
+    Read that one pbr guide https://google.github.io/filament/Filament.html
