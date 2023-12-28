@@ -20,6 +20,7 @@
 #define QUEUE_FAMILY_GRAPHICS 1 << 0
 #define QUEUE_FAMILY_PRESENT 1 << 1
 
+#define UNIFORM_TYPES 4
 #define UNIFORM_BUF_GLOBAL 1
 #define UNIFORM_BUF_MATERIAL 5
 #define UNIFORM_BUF_OBJECT 10
@@ -124,8 +125,8 @@ u32 uniform_bone_alloc;
 
 u32 range_count = 0;
 VkMappedMemoryRange ranges[UNIFORM_BUF_OBJECT + UNIFORM_BUF_MATERIAL + 2];
-VkDescriptorSet descriptor_sets[max_frames_in_flight * 4];
-VkDescriptorSetLayout descriptor_set_layouts[4];
+VkDescriptorSet descriptor_sets[max_frames_in_flight * UNIFORM_TYPES];
+VkDescriptorSetLayout descriptor_set_layouts[UNIFORM_TYPES];
 std::vector<VkBuffer> uniform_buffers;
 std::vector<VkDeviceMemory> uniform_buffers_memory;
 std::vector<void*> uniform_buffers_mapped;
@@ -635,11 +636,11 @@ void create_descriptor_set_layouts()
     object_binding.pImmutableSamplers = NULL;
 
     VkDescriptorSetLayoutBinding bone_binding{};
-    object_binding.binding = 0;
-    object_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    object_binding.descriptorCount = 1;
-    object_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    object_binding.pImmutableSamplers = NULL;
+    bone_binding.binding = 0;
+    bone_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    bone_binding.descriptorCount = 1;
+    bone_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    bone_binding.pImmutableSamplers = NULL;
 
     VkDescriptorSetLayoutBinding bindings[] = {
         global_binding,
@@ -660,6 +661,7 @@ void create_graphics_pipeline(const char* vert_file,
                               VkVertexInputAttributeDescription* attr_desc,
                               u32 attr_count,
                               VkVertexInputBindingDescription* bind_desc,
+                              u32 set_layout_count,
                               VkPipelineLayout* layout,
                               VkPipeline* pipeline)
 {
@@ -752,7 +754,7 @@ void create_graphics_pipeline(const char* vert_file,
     color_blending.pAttachments = &color_blend_attachment;
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 3;
+    pipeline_layout_info.setLayoutCount = set_layout_count;
     pipeline_layout_info.pSetLayouts = descriptor_set_layouts;
     if (vkCreatePipelineLayout(device, &pipeline_layout_info, NULL,
                                layout) != VK_SUCCESS) {
@@ -840,6 +842,7 @@ void create_pipelines()
                              static_attr,
                              2,
                              &static_bind_desc,
+                             3,
                              pipeline_layouts,
                              graphics_pipelines);
 
@@ -848,6 +851,7 @@ void create_pipelines()
                              rigged_attr,
                              4,
                              &rigged_bind_desc,
+                             4,
                              pipeline_layouts + 1,
                              graphics_pipelines + 1);
 }
@@ -1154,7 +1158,7 @@ void create_descriptor_pool()
 {
     VkDescriptorPoolSize pool_size{};
     pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_size.descriptorCount = (u32) max_frames_in_flight;
+    pool_size.descriptorCount = (u32) max_frames_in_flight * 2;
     VkDescriptorPoolSize pool_size_dynamic{};
     pool_size_dynamic.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     pool_size_dynamic.descriptorCount = (u32) max_frames_in_flight * 2;
@@ -1170,7 +1174,7 @@ void create_descriptor_pool()
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.poolSizeCount = 3;
     pool_info.pPoolSizes = sizes;
-    pool_info.maxSets = (u32) max_frames_in_flight * 3;
+    pool_info.maxSets = (u32) max_frames_in_flight * UNIFORM_TYPES;
     if (vkCreateDescriptorPool(device, 
                                &pool_info, 
                                NULL, 
@@ -1221,7 +1225,7 @@ void create_descriptor_sets()
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = descriptor_pool;
-    alloc_info.descriptorSetCount = (u32) max_frames_in_flight * 3;
+    alloc_info.descriptorSetCount = (u32) max_frames_in_flight * UNIFORM_TYPES;
     alloc_info.pSetLayouts = layouts;
     if (vkAllocateDescriptorSets(device, &alloc_info, 
                                  descriptor_sets) != VK_SUCCESS) {
@@ -1239,11 +1243,11 @@ void create_descriptor_sets()
         image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         image_info.imageView = render_image_views[prev_frame];
         image_info.sampler = texture_sampler;
-        writes[0] = create_buffer_write(0 + i * 3, &buffer_info, 
+        writes[0] = create_buffer_write(0 + i * UNIFORM_TYPES, &buffer_info, 
                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writes[1] = VkWriteDescriptorSet{};
         writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet = descriptor_sets[0 + i * 4];
+        writes[1].dstSet = descriptor_sets[0 + i * UNIFORM_TYPES];
         writes[1].dstBinding = 1;
         writes[1].dstArrayElement = 0;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1252,17 +1256,18 @@ void create_descriptor_sets()
         vkUpdateDescriptorSets(device, 2, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, material_offset, sizeof(MaterialUniform));
-        writes[0] = create_buffer_write(1 + i * 4, &buffer_info, 
+        writes[0] = create_buffer_write(1 + i * UNIFORM_TYPES, &buffer_info, 
                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, object_offset, sizeof(ObjectUniform));
-        writes[0] = create_buffer_write(2 + i * 4, &buffer_info, 
+        writes[0] = create_buffer_write(2 + i * UNIFORM_TYPES, &buffer_info, 
                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, bone_offset, bone_stride * UNIFORM_BUF_BONE);
-        writes[0] = create_buffer_write(3 + i * 4, &buffer_info, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writes[0] = create_buffer_write(3 + i * UNIFORM_TYPES, &buffer_info, 
+                                        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         prev_frame = (prev_frame + 1) % max_frames_in_flight;
@@ -1561,6 +1566,16 @@ void init_vulkan(GLFWwindow* window)
 
 void flush_uniform_buffer()
 {
+    // flush bones
+    VkMappedMemoryRange range{};
+    range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+    range.pNext = NULL;
+    range.memory = uniform_buffers_memory[current_frame];
+    range.offset = bone_offset;
+    range.size = get_align(bone_stride * uniform_bone_alloc, non_coherent_atom_size);
+    ranges[range_count] = range;
+    ++range_count;
+
     vkFlushMappedMemoryRanges(device, range_count, ranges);
     range_count = 0;
 }
@@ -1578,17 +1593,6 @@ void update_uniform_memory(u8* memory, u32 offset, u32 size, u32 current_frame)
     ++range_count;
 }
 
-void update_global_uniform(glm::vec3 camera_pos, glm::mat4 proj_view)
-{
-    GlobalUniform ubo;
-    ubo.camera_pos = camera_pos;
-    ubo.proj_view = proj_view;
-    ubo.jitter_index = jitter_index;
-    ubo.screen_size = glm::vec2(swap_chain_extent.width, swap_chain_extent.height);
-    jitter_index = (jitter_index + 1) % 5;
-    update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
-}
-
 u32 alloc_object_uniform(glm::mat4* model, glm::mat4* prev_mvp) 
 {
     assert(uniform_object_alloc < UNIFORM_BUF_OBJECT);
@@ -1600,6 +1604,19 @@ u32 alloc_object_uniform(glm::mat4* model, glm::mat4* prev_mvp)
     u32 offset = object_offset + dynamic_align[2] * slot;
     update_uniform_memory((u8*) &ubo, offset, sizeof(ObjectUniform), current_frame);
     return slot;
+}
+
+u32 alloc_bone_uniform(Bone* bones, u32 bone_count)
+{
+    assert(uniform_bone_alloc + bone_count <= UNIFORM_BUF_BONE);
+    u32 offset = uniform_bone_alloc;
+    uniform_bone_alloc += bone_count;
+
+    u32 byte_offset = bone_offset + bone_stride * offset;
+    memcpy((u8*) uniform_buffers_mapped[current_frame] + byte_offset, 
+           bones, bone_count * bone_stride);
+
+    return offset;
 }
 
 void init_materials()
@@ -1644,26 +1661,33 @@ void draw_object(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 ma
 
     Message message;
     message.pipeline = 0;
-    message.object.uniform_slot = slot;
-    message.object.material = material;
-    message.object.vertex_offset = model->vertex_offset;
-    message.object.index_count = model->index_count;
-    message.object.index_offset = model->index_offset;
+    message.uniform_slot = slot;
+    message.material = material;
+    message.vertex_offset = model->vertex_offset;
+    message.index_count = model->index_count;
+    message.index_offset = model->index_offset;
     assert(render_queue.message_count < MAX_MESSAGES);
     render_queue.messages[render_queue.message_count++] = message;
 }
 
-void draw_rigged(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 material)
+void draw_rigged(glm::mat4* transform, 
+                 glm::mat4* prev_mvp, 
+                 Model* model, 
+                 u32 material, 
+                 Bone* pose, 
+                 u32 bone_count)
 {
     u32 slot = alloc_object_uniform(transform, prev_mvp);
+    u32 bones = alloc_bone_uniform(pose, bone_count);
 
     Message message;
     message.pipeline = 1;
-    message.object.uniform_slot = slot;
-    message.object.material = material;
-    message.object.vertex_offset = model->vertex_offset;
-    message.object.index_count = model->index_count;
-    message.object.index_offset = model->index_offset;
+    message.uniform_slot = slot;
+    message.material = material;
+    message.vertex_offset = model->vertex_offset;
+    message.index_count = model->index_count;
+    message.index_offset = model->index_offset;
+    message.bone_offset = bones;
     assert(render_queue.message_count < MAX_MESSAGES);
     render_queue.messages[render_queue.message_count++] = message;
 }
@@ -1676,22 +1700,25 @@ void bind_pipeline(VkCommandBuffer buffer, u32 pipeline)
     vkCmdBindVertexBuffers(buffer, 0, 1, vertex_buffers, offsets);
     vkCmdBindIndexBuffer(buffer, index_buffer[pipeline], 0, VK_INDEX_TYPE_UINT32);
     vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,  pipeline_layouts[pipeline], 
-                            0, 1, descriptor_sets + 0 + current_frame * 3, 0, NULL);
+                            0, 1, descriptor_sets + 0 + current_frame * 4, 0, NULL);
 }
 
 void draw_entry(VkCommandBuffer buffer, Message message)
 {
-    u32 material = message.object.material;
-    u32 uniform_slot = message.object.uniform_slot;
-    u32 index_count = message.object.index_count;
-    u32 index_offset = message.object.index_offset;
-    u32 vertex_offset = message.object.vertex_offset;
+    u32 material = message.material;
+    u32 uniform_slot = message.uniform_slot;
+    u32 index_count = message.index_count;
+    u32 index_offset = message.index_offset;
+    u32 vertex_offset = message.vertex_offset;
 
-    // Start 1
+    u32 descriptor_count = message.pipeline == 0? 2 : 3;
+
     u32 dynamic_offsets[] = { material * dynamic_align[1], uniform_slot * dynamic_align[2] };
-    // TODO: pipeline_layouts[0]?
-    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts[0], 1,
-                            2, descriptor_sets + 1 + current_frame * 3, 2, dynamic_offsets);
+    vkCmdBindDescriptorSets(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                            pipeline_layouts[message.pipeline], 1, 
+                            descriptor_count, 
+                            descriptor_sets + 1 + current_frame * UNIFORM_TYPES, 2, 
+                            dynamic_offsets);
     vkCmdDrawIndexed(buffer, index_count, 1, index_offset, vertex_offset, 0);
 }
 
@@ -1823,10 +1850,19 @@ void record_command_buffer(VkCommandBuffer buffer, u32 image_index)
     return;
 }
 
-void start_frame()
+void start_frame(glm::vec3 camera_pos, glm::mat4 proj_view)
 {
     uniform_object_alloc = 0;
+    uniform_bone_alloc = 0;
     render_queue.message_count = 0;
+
+    GlobalUniform ubo;
+    ubo.camera_pos = camera_pos;
+    ubo.proj_view = proj_view;
+    ubo.jitter_index = jitter_index;
+    ubo.screen_size = glm::vec2(swap_chain_extent.width, swap_chain_extent.height);
+    jitter_index = (jitter_index + 1) % 5;
+    update_uniform_memory((u8*) &ubo, 0, sizeof(GlobalUniform), current_frame);
 }
 
 void end_frame(GLFWwindow* window) 
@@ -1838,11 +1874,11 @@ void end_frame(GLFWwindow* window)
                     UINT64_MAX);
     u32 image_index;
     VkResult result = vkAcquireNextImageKHR(device, 
-                                    swap_chain, 
-                                    UINT64_MAX,
-                                    image_available_semaphores[current_frame],
-                                    VK_NULL_HANDLE, 
-                                    &image_index);
+                                            swap_chain, 
+                                            UINT64_MAX,
+                                            image_available_semaphores[current_frame],
+                                            VK_NULL_HANDLE, 
+                                            &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreate_swap_chain(window);
         return;
@@ -1921,6 +1957,7 @@ void cleanup_vulkan()
     vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[0], NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[1], NULL);
     vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[2], NULL);
+    vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[3], NULL);
     for (u32 i = 0; i < PIPELINE_COUNT; ++i) {
         vkDestroyBuffer(device, vertex_buffer[i], NULL);
         vkFreeMemory(device, vertex_buffer_memory[i], NULL);
@@ -1939,3 +1976,4 @@ void cleanup_vulkan()
     vkDestroyInstance(instance, NULL);
 }
 
+Arena pose_buffer;

@@ -326,14 +326,14 @@ void source_file(const char* file, Scene* scene)
             assert(context.skeleton.bone_count < MAX_BONES);
             char* name = read_ident(ptr, &context.arena);
 
-            Bone bone;
-            bone.r = read_float(ptr);
-            bone.i = read_float(ptr);
-            bone.j = read_float(ptr);
-            bone.k = read_float(ptr);
-            bone.x = read_float(ptr);
-            bone.y = read_float(ptr);
-            bone.z = read_float(ptr);
+            Bone bone{};
+            // bone.r = read_float(ptr);
+            // bone.i = read_float(ptr);
+            // bone.j = read_float(ptr);
+            // bone.k = read_float(ptr);
+            // bone.x = read_float(ptr);
+            // bone.y = read_float(ptr);
+            // bone.z = read_float(ptr);
             context.skeleton.bones[context.skeleton.bone_count] = bone;
 
             context.skeleton.bone_count++;

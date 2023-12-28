@@ -124,15 +124,18 @@ i32 main()
         glm::mat4 view = glm::lookAt(camera.pos, camera.pos + camera.front, glm::vec3(0.0, 0.0, 1.0));
         glm::mat4 proj_view = proj * view;
 
-        start_frame();
+        start_frame(camera.pos, proj_view);
 
-        update_global_uniform(camera.pos, proj_view);
+        Bone bones[2] = {
+            glm::mat4(1.0f),
+            glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(1.0f, 0.0f, 0.0f))
+        };
 
         for (u32 i = 0; i < scene.actor_count; ++i) {
             Actor actor = scene.actors[i];
             glm::mat4 transform = get_actor_transform(&actor);
             if (actor.model->flags & MODEL_FLAG_SKINNED) {
-                draw_rigged(&transform, &actor.prev_mvp, actor.model, actor.material);
+                draw_rigged(&transform, &actor.prev_mvp, actor.model, actor.material, bones, 2);
             } else {
                 draw_object(&transform, &actor.prev_mvp, actor.model, actor.material);
             }

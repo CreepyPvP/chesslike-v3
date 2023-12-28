@@ -4,18 +4,17 @@
 
 #define MAX_MESSAGES 128
 
-struct StaticObject
+struct Message 
 {
     u32 uniform_slot;
     u32 material;
     u32 vertex_offset;
     u32 index_offset;
     u32 index_count;
-};
 
-struct Message 
-{
-    StaticObject object;
+    // NOTE: only contains valid value if pipeline has bone information
+    u32 bone_offset;
+    
     u32 pipeline;
 };
 

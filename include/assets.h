@@ -1,6 +1,7 @@
 #pragma once
 
 #include "include/defines.h"
+#include <glm/mat4x4.hpp>
 
 #define MODEL_BUFFER_MAX_MODELS 32
 
@@ -34,13 +35,4 @@ struct Model
     u8 flags;
 };
 
-struct Bone
-{
-    float x;
-    float y;
-    float z;
-    float r;
-    float i;
-    float j;
-    float k;
-};
+typedef glm::mat4 Bone;

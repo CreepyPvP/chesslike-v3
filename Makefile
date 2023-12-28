@@ -8,7 +8,7 @@ shader/pbr_frag.spv: shader/pbr.frag
 shader/staticv.spv: shader/pbr.vert
 	glslc shader/pbr.vert -o shader/staticv.spv
 
-shader/skinnedv.spv: shader/pbr.vert
+shader/skinnedv.spv: shader/skinned.vert
 	glslc shader/skinned.vert -o shader/skinnedv.spv
 
 clean:
