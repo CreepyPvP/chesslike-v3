@@ -66,6 +66,11 @@ struct ObjectUniform
     glm::mat4 prev_mvp;
 };
 
+struct PushConstants
+{
+    u32 bone_offset;
+};
+
 struct QueueFamilyIndices
 {
     u32 flags;
@@ -676,6 +681,7 @@ void create_graphics_pipeline(const char* vert_file,
     buffer = read_file(frag_file, &len, NULL);
     if (!buffer)
         exit(1);
+
     create_shader_module(buffer, len, &frag_shader);
     free(buffer);
     VkPipelineShaderStageCreateInfo vert_create_info{};
@@ -694,6 +700,7 @@ void create_graphics_pipeline(const char* vert_file,
         vert_create_info,
         frag_create_info
     };
+
     VkPipelineDynamicStateCreateInfo dynamic_state{};
     dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamic_state.dynamicStateCount = 0;
@@ -726,6 +733,7 @@ void create_graphics_pipeline(const char* vert_file,
     viewport_state.scissorCount = 1;
     viewport_state.pViewports = &viewport;
     viewport_state.pScissors = &scissors;
+
     VkPipelineRasterizationStateCreateInfo rasterizer{};
     rasterizer.sType =
         VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -756,6 +764,14 @@ void create_graphics_pipeline(const char* vert_file,
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_info.setLayoutCount = set_layout_count;
     pipeline_layout_info.pSetLayouts = descriptor_set_layouts;
+
+    VkPushConstantRange push_constants{};
+    push_constants.offset = 0;
+    push_constants.size = sizeof(PushConstants);
+    push_constants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pipeline_layout_info.pPushConstantRanges = &push_constants;
+    pipeline_layout_info.pushConstantRangeCount = 1;
+
     if (vkCreatePipelineLayout(device, &pipeline_layout_info, NULL,
                                layout) != VK_SUCCESS) {
         printf("Failed to create pipeline layout\n");
@@ -1719,6 +1735,11 @@ void draw_entry(VkCommandBuffer buffer, Message message)
                             descriptor_count, 
                             descriptor_sets + 1 + current_frame * UNIFORM_TYPES, 2, 
                             dynamic_offsets);
+
+    PushConstants push_constants;
+    push_constants.bone_offset = message.bone_offset;
+    vkCmdPushConstants(buffer, pipeline_layouts[message.pipeline], VK_SHADER_STAGE_VERTEX_BIT,
+                       0, sizeof(PushConstants), &push_constants);
     vkCmdDrawIndexed(buffer, index_count, 1, index_offset, vertex_offset, 0);
 }
 

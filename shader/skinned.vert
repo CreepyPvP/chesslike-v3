@@ -23,6 +23,11 @@ layout(binding = 0, set = 3) uniform BoneUniform
     mat4 transforms[20];
 } bones;
 
+layout(push_constant) uniform Constants
+{
+    uint bone_offset;
+} constants;
+
 
 layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
@@ -36,9 +41,9 @@ layout(location = 2) out vec3 out_prev_screen_pos;
 void main() 
 {
     mat4 bone_transform;
-    bone_transform = in_bone_weights.x * bones.transforms[in_bone_ids.x];
-    bone_transform += in_bone_weights.y * bones.transforms[in_bone_ids.y];
-    bone_transform += in_bone_weights.z * bones.transforms[in_bone_ids.z];
+    bone_transform = in_bone_weights.x * bones.transforms[constants.bone_offset + in_bone_ids.x];
+    bone_transform += in_bone_weights.y * bones.transforms[constants.bone_offset + in_bone_ids.y];
+    bone_transform += in_bone_weights.z * bones.transforms[constants.bone_offset + in_bone_ids.z];
 
     vec4 world_pos = object.model * bone_transform * vec4(in_position, 1.0);
     out_normal = (object.model * bone_transform * vec4(in_normal, 0.0)).xyz;

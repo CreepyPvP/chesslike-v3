@@ -1,10 +1,9 @@
 Animation
     Read bone transforms corretly
-    Write bone transform to uniform
-    Apply bone transofrm in shader
     Import animations
-    Interpolate
+    Interpolate keyframes
     Fix timestep
+    (Maybe not use push contants for other pipelines)
 
 Fix syncronization
     Fix validation layer warning
@@ -15,7 +14,8 @@ Lighting
 
 AA
     Fix "negative hightlight smearing"
-    Fix flimmering
+    Fix flimmering (caused by texture sampling?)
+    Use previous ubo state for prev_mvp instead of reuploading old
 
 Memory Managment
     Vulkan allocator
