@@ -23,6 +23,7 @@
 #define UNIFORM_BUF_GLOBAL 1
 #define UNIFORM_BUF_MATERIAL 5
 #define UNIFORM_BUF_OBJECT 10
+#define UNIFORM_BUF_BONE 20
 
 const i32 max_frames_in_flight = 2;
 
@@ -112,16 +113,19 @@ VkSampler texture_sampler;
 
 // 0 => global, 1 => material, 2 => object
 u32 dynamic_align[3];
+u32 bone_stride;
 u32 non_coherent_atom_size;
-u32 range_count = 0;
 u32 object_offset;
+u32 bone_offset;
 u32 material_offset;
 
 u32 uniform_object_alloc;
+u32 uniform_bone_alloc;
 
-VkMappedMemoryRange ranges[UNIFORM_BUF_OBJECT + UNIFORM_BUF_MATERIAL + 1];
-VkDescriptorSet descriptor_sets[max_frames_in_flight * 3];
-VkDescriptorSetLayout descriptor_set_layouts[3];
+u32 range_count = 0;
+VkMappedMemoryRange ranges[UNIFORM_BUF_OBJECT + UNIFORM_BUF_MATERIAL + 2];
+VkDescriptorSet descriptor_sets[max_frames_in_flight * 4];
+VkDescriptorSetLayout descriptor_set_layouts[4];
 std::vector<VkBuffer> uniform_buffers;
 std::vector<VkDeviceMemory> uniform_buffers_memory;
 std::vector<void*> uniform_buffers_mapped;
@@ -608,18 +612,21 @@ void create_descriptor_set_layouts()
     global_binding.descriptorCount = 1;
     global_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     global_binding.pImmutableSamplers = NULL;
+
     VkDescriptorSetLayoutBinding sampler_binding{};
     sampler_binding.binding = 1;
     sampler_binding.descriptorCount = 1;
     sampler_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     sampler_binding.pImmutableSamplers = NULL;
     sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkDescriptorSetLayoutBinding material_binding{};
     material_binding.binding = 0;
     material_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     material_binding.descriptorCount = 1;
     material_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     material_binding.pImmutableSamplers = NULL;
+
     VkDescriptorSetLayoutBinding object_binding{};
     object_binding.binding = 0;
     object_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -627,16 +634,25 @@ void create_descriptor_set_layouts()
     object_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     object_binding.pImmutableSamplers = NULL;
 
+    VkDescriptorSetLayoutBinding bone_binding{};
+    object_binding.binding = 0;
+    object_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    object_binding.descriptorCount = 1;
+    object_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    object_binding.pImmutableSamplers = NULL;
+
     VkDescriptorSetLayoutBinding bindings[] = {
         global_binding,
         sampler_binding,
         material_binding,
-        object_binding
+        object_binding,
+        bone_binding
     };
 
     create_layout(bindings, 2, descriptor_set_layouts);
     create_layout(bindings + 2, 1, descriptor_set_layouts + 1);
     create_layout(bindings + 3, 1, descriptor_set_layouts + 2);
+    create_layout(bindings + 4, 1, descriptor_set_layouts + 3);
 }
 
 void create_graphics_pipeline(const char* vert_file,
@@ -1110,10 +1126,12 @@ void create_uniform_buffer()
     dynamic_align[1] = get_align(size, min_align);
     size = sizeof(ObjectUniform);
     dynamic_align[2] = get_align(size, min_align);
+    bone_stride = sizeof(Bone);
 
     material_offset = dynamic_align[0];
     object_offset = material_offset + dynamic_align[1] * UNIFORM_BUF_MATERIAL;
-    VkDeviceSize buffer_size = object_offset + dynamic_align[2] * UNIFORM_BUF_OBJECT;
+    bone_offset = object_offset + dynamic_align[2] * UNIFORM_BUF_OBJECT;
+    VkDeviceSize buffer_size = bone_offset + bone_stride * UNIFORM_BUF_BONE;
     uniform_buffers.resize(max_frames_in_flight);
     uniform_buffers_memory.resize(max_frames_in_flight);
     uniform_buffers_mapped.resize(max_frames_in_flight);
@@ -1194,9 +1212,11 @@ void create_descriptor_sets()
         descriptor_set_layouts[0],
         descriptor_set_layouts[1],
         descriptor_set_layouts[2],
+        descriptor_set_layouts[3],
         descriptor_set_layouts[0],
         descriptor_set_layouts[1],
         descriptor_set_layouts[2],
+        descriptor_set_layouts[3],
     };
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1223,7 +1243,7 @@ void create_descriptor_sets()
                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writes[1] = VkWriteDescriptorSet{};
         writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[1].dstSet = descriptor_sets[0 + i * 3];
+        writes[1].dstSet = descriptor_sets[0 + i * 4];
         writes[1].dstBinding = 1;
         writes[1].dstArrayElement = 0;
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -1232,13 +1252,17 @@ void create_descriptor_sets()
         vkUpdateDescriptorSets(device, 2, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, material_offset, sizeof(MaterialUniform));
-        writes[0] = create_buffer_write(1 + i * 3, &buffer_info, 
+        writes[0] = create_buffer_write(1 + i * 4, &buffer_info, 
                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         buffer_info = create_buffer_info(buffer, object_offset, sizeof(ObjectUniform));
-        writes[0] = create_buffer_write(2 + i * 3, &buffer_info, 
+        writes[0] = create_buffer_write(2 + i * 4, &buffer_info, 
                                         VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC);
+        vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
+
+        buffer_info = create_buffer_info(buffer, bone_offset, bone_stride * UNIFORM_BUF_BONE);
+        writes[0] = create_buffer_write(3 + i * 4, &buffer_info, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         vkUpdateDescriptorSets(device, 1, writes, 0, NULL);
 
         prev_frame = (prev_frame + 1) % max_frames_in_flight;

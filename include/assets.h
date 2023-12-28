@@ -33,3 +33,14 @@ struct Model
     u32 vertex_offset;
     u8 flags;
 };
+
+struct Bone
+{
+    float x;
+    float y;
+    float z;
+    float r;
+    float i;
+    float j;
+    float k;
+};

@@ -1,4 +1,4 @@
-.PHONY: clean
+.PHONY: clean 
 
 shader: shader/pbr_frag.spv shader/staticv.spv shader/skinnedv.spv
 

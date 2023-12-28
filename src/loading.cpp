@@ -29,18 +29,6 @@ struct ModelContext
     Model model;
 };
 
-struct Bone 
-{
-    float x;
-    float y;
-    float z;
-
-    float r;
-    float i;
-    float j;
-    float k;
-};
-
 struct SkeletonContext
 {
     Bone bones[MAX_BONES];

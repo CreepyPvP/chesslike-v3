@@ -73,11 +73,11 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC .
 )
 
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PUBLIC /W4)
-else()
-    target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Wextra -Wpedantic)
-endif()
+# if(MSVC)
+#     target_compile_options(${PROJECT_NAME} PUBLIC /W4)
+# else()
+#     target_compile_options(${PROJECT_NAME} PUBLIC -Wall -Wextra -Wpedantic)
+# endif()
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE ${Vulkan_INCLUDE_DIRS}
