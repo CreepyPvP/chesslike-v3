@@ -1629,6 +1629,21 @@ void draw_object(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 ma
     render_queue.messages[render_queue.message_count++] = message;
 }
 
+void draw_rigged(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 material)
+{
+    u32 slot = alloc_object_uniform(transform, prev_mvp);
+
+    Message message;
+    message.pipeline = 1;
+    message.object.uniform_slot = slot;
+    message.object.material = material;
+    message.object.vertex_offset = model->vertex_offset;
+    message.object.index_count = model->index_count;
+    message.object.index_offset = model->index_offset;
+    assert(render_queue.message_count < MAX_MESSAGES);
+    render_queue.messages[render_queue.message_count++] = message;
+}
+
 void bind_pipeline(VkCommandBuffer buffer, u32 pipeline)
 {
     vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipelines[pipeline]);

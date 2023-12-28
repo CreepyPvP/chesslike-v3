@@ -19,6 +19,7 @@ void init_materials();
 void update_global_uniform(glm::vec3 camera_pos, glm::mat4 proj_view);
 
 void draw_object(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 material);
+void draw_rigged(glm::mat4* transform, glm::mat4* prev_mvp, Model* model, u32 material);
 
 void end_frame(GLFWwindow* window);
 void start_frame();

@@ -130,13 +130,13 @@ i32 main()
 
         for (u32 i = 0; i < scene.actor_count; ++i) {
             Actor actor = scene.actors[i];
+            glm::mat4 transform = get_actor_transform(&actor);
             if (actor.model->flags & MODEL_FLAG_SKINNED) {
-                // draw_rigged();
+                draw_rigged(&transform, &actor.prev_mvp, actor.model, actor.material);
             } else {
-                glm::mat4 transform = get_actor_transform(&actor);
                 draw_object(&transform, &actor.prev_mvp, actor.model, actor.material);
-                scene.actors[i].prev_mvp = proj_view * transform;
             }
+            scene.actors[i].prev_mvp = proj_view * transform;
         }
 
         end_frame(window);
